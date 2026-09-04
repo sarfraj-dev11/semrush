@@ -7,6 +7,8 @@ import * as schema from "./schema";
 
 export const DATABASE_URL = env.DATABASE_URL;
 
+import { BOOTSTRAP_SCHEMA } from "./bootstrap-schema";
+
 function createDbClient(): Client {
   let url = DATABASE_URL;
   if (process.env.VERCEL && url.startsWith("file:./data")) {
@@ -39,6 +41,63 @@ function createDbClient(): Client {
   } catch (err) {
     console.error("❌ [DB] Failed to configure SQLite pragmas:", err);
   }
+
+  const originalExecute = client.execute.bind(client);
+  const originalBatch = client.batch.bind(client);
+
+  let schemaInitialized = false;
+  let initPromise: Promise<void> | null = null;
+
+  async function ensureInitialized() {
+    if (schemaInitialized) return;
+    if (!initPromise) {
+      initPromise = (async () => {
+        try {
+          const check = await originalExecute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='projects' LIMIT 1"
+          );
+          if (check.rows.length === 0) {
+            console.log("⚡ [DB] Initializing database schema...");
+            for (const statement of BOOTSTRAP_SCHEMA) {
+              try {
+                await originalExecute(statement);
+              } catch {
+                // statement might already exist
+              }
+            }
+            try {
+              await originalExecute(
+                "INSERT OR IGNORE INTO clients (id, name, status) VALUES (12, 'Primary Organization', 'active')"
+              );
+              await originalExecute(
+                "INSERT OR IGNORE INTO projects (id, client_id, name, domain, target_country, target_device) VALUES (13, 12, 'Nexenbloom', 'https://nexenbloom.com', 'US', 'mobile')"
+              );
+              await originalExecute(
+                "INSERT OR IGNORE INTO keywords (id, project_id, keyword, country) VALUES (19, 13, 'Nexen Bloom', 'US')"
+              );
+            } catch (seedErr) {
+              console.error("⚠️ [DB] Seed data error:", seedErr);
+            }
+            console.log("✅ [DB] Database schema and default project initialized!");
+          }
+          schemaInitialized = true;
+        } catch (err) {
+          console.error("❌ [DB] Schema initialization error:", err);
+        }
+      })();
+    }
+    await initPromise;
+  }
+
+  client.execute = async function (...args: Parameters<typeof originalExecute>) {
+    await ensureInitialized();
+    return originalExecute(...args);
+  };
+
+  client.batch = async function (...args: Parameters<typeof originalBatch>) {
+    await ensureInitialized();
+    return originalBatch(...args);
+  };
 
   return client;
 }
