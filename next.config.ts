@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // libsql ships native bindings that must not be bundled by Turbopack.
+  serverExternalPackages: ["@libsql/client", "libsql"],
 };
 
 export default nextConfig;

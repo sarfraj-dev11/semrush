@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // SEO tracking data — allow read/write from authenticated functions
+    match /seo_projects/{projectId} {
+      allow read, write: if true;
+    }
+    match /seo_keywords/{keywordId} {
+      allow read, write: if true;
+    }
+    match /seo_rankings/{rankingId} {
+      allow read, write: if true;
+    }
+  }
+}

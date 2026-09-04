@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1786729991450,
+      "tag": "0000_fresh_junta",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786746238735,
+      "tag": "0001_noisy_eddie_brock",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786747481355,
+      "tag": "0002_useful_justin_hammer",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786749416689,
+      "tag": "0003_safe_microbe",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786994213250,
+      "tag": "0004_romantic_christian_walker",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1788558661389,
+      "tag": "0005_solid_shinko_yamashiro",
+      "breakpoints": true
+    }
+  ]
+}
