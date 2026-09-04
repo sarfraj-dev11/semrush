@@ -46,3 +46,6 @@ next-env.d.ts
 # firebase
 functions/lib/
 functions/node_modules/
+
+.vercel
+.env*
