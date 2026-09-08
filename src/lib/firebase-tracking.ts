@@ -649,6 +649,28 @@ export async function syncKeywordsAndRankingsFromFirebase(projectId?: number, fo
             console.warn(`⚠️ [Firebase] Could not insert keyword "${kw.keyword}":`, retryErr);
           }
         }
+      } else if (
+        (kw.searchVolume != null && existing.searchVolume == null) ||
+        (kw.targetUrl != null && existing.targetUrl == null)
+      ) {
+        try {
+          await db
+            .update(keywordsTable)
+            .set({
+              searchVolume: kw.searchVolume ?? existing.searchVolume,
+              targetUrl: kw.targetUrl ?? existing.targetUrl,
+              difficulty: kw.difficulty ?? existing.difficulty,
+              cpc: kw.cpc ?? existing.cpc,
+            })
+            .where(eq(keywordsTable.id, existing.id));
+
+          existing.searchVolume = kw.searchVolume ?? existing.searchVolume;
+          existing.targetUrl = kw.targetUrl ?? existing.targetUrl;
+          if (kw.difficulty != null) existing.difficulty = kw.difficulty;
+          if (kw.cpc != null) existing.cpc = kw.cpc;
+        } catch (updateErr) {
+          console.warn(`⚠️ [Firebase] Could not update keyword "${kw.keyword}":`, updateErr);
+        }
       }
     }
 

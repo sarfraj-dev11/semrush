@@ -27,7 +27,7 @@ export const SOURCE_FIELD_DEFINITIONS: Record<ImportSourceType, FieldDefinition[
       key: "search_volume",
       label: "Search Volume",
       type: "number",
-      aliases: ["search volume", "volume", "vol", "monthly searches"],
+      aliases: ["search volume", "volume", "vol", "monthly searches", "sv", "searches", "msv", "monthly search volume"],
     },
     {
       key: "difficulty",
@@ -86,6 +86,12 @@ export const SOURCE_FIELD_DEFINITIONS: Record<ImportSourceType, FieldDefinition[
       label: "Ranking URL",
       type: "string",
       aliases: ["url", "ranking url", "page url", "target url"],
+    },
+    {
+      key: "search_volume",
+      label: "Search Volume",
+      type: "number",
+      aliases: ["search volume", "volume", "vol", "monthly searches", "sv", "searches", "msv", "monthly search volume"],
     },
   ],
   backlinks: [

@@ -152,6 +152,9 @@ export async function executeImportAction(
         const dateRaw = mapping.date ? row[mapping.date]?.trim() : "";
         const date = dateRaw ? dateRaw.split("T")[0] : new Date().toISOString().split("T")[0];
         const rankingUrl = mapping.url ? row[mapping.url]?.trim() || null : null;
+        const vol = mapping.search_volume
+          ? Number(row[mapping.search_volume]?.replace(/[^0-9.-]/g, "")) || null
+          : null;
 
         if (!kwName || isNaN(pos)) {
           skippedCount++;
@@ -160,7 +163,7 @@ export async function executeImportAction(
 
         // Find or create keyword
         let [kwRecord] = await db
-          .select({ id: keywords.id })
+          .select({ id: keywords.id, searchVolume: keywords.searchVolume, targetUrl: keywords.targetUrl })
           .from(keywords)
           .where(and(eq(keywords.projectId, projectId), eq(keywords.keyword, kwName)))
           .limit(1);
@@ -171,9 +174,19 @@ export async function executeImportAction(
             .values({
               projectId,
               keyword: kwName,
+              searchVolume: vol,
+              targetUrl: rankingUrl,
             })
-            .returning({ id: keywords.id });
+            .returning({ id: keywords.id, searchVolume: keywords.searchVolume, targetUrl: keywords.targetUrl });
           kwRecord = inserted;
+        } else if (vol != null || rankingUrl != null) {
+          await db
+            .update(keywords)
+            .set({
+              searchVolume: vol ?? kwRecord.searchVolume,
+              targetUrl: rankingUrl ?? kwRecord.targetUrl,
+            })
+            .where(eq(keywords.id, kwRecord.id));
         }
 
         // Upsert ranking by (keywordId, date)
