@@ -72,3 +72,30 @@ export async function runRankCheckAction(projectId: number) {
     };
   }
 }
+
+export async function syncFirebaseDataAction(projectId: number) {
+  try {
+    const { syncKeywordsAndRankingsFromFirebase, syncProjectsFromFirebase } = await import(
+      "@/lib/firebase-tracking"
+    );
+    await syncProjectsFromFirebase();
+    await syncKeywordsAndRankingsFromFirebase(projectId);
+
+    revalidatePath(`/projects/${projectId}/rankings`);
+    revalidatePath(`/projects/${projectId}/keywords`);
+    revalidatePath(`/projects/${projectId}`);
+    revalidatePath("/position-tracking");
+    revalidatePath("/projects");
+
+    return {
+      success: true,
+      message: "Successfully synced latest data from Firebase.",
+    };
+  } catch (error) {
+    console.error("❌ [Firebase Sync] Action failed:", error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Failed to sync with Firebase.",
+    };
+  }
+}

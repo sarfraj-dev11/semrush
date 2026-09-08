@@ -1,11 +1,14 @@
 import { desc } from "drizzle-orm";
-import { ChevronDown, Mail, Plus, Search, Settings, Sparkles } from "lucide-react";
+import { ChevronDown, Mail, Plus, Search, Settings, Sparkles, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { ConfirmDelete } from "@/components/confirm-delete";
 import { Button } from "@/components/ui/button";
 import { db } from "@/db";
 import { crawls, projects, type Crawl } from "@/db/schema";
 import { toProjectSlug } from "@/lib/slug-utils";
 import { formatRelative, hostnameOf } from "@/lib/utils";
+import { syncProjectsFromFirebase } from "@/lib/firebase-tracking";
+import { deleteProjectAction } from "../projects/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +22,9 @@ type Metric = {
   lowerIsBetter?: boolean;
   /** Shown instead of a number when the metric could not be measured. */
   emptyLabel?: string;
+  colorClass?: string;
+  href?: string;
+  target?: string;
 };
 
 function MetricCell({ metric }: { metric: Metric }) {
@@ -36,12 +42,32 @@ function MetricCell({ metric }: { metric: Metric }) {
   const delta = previous === null ? null : rounded - Math.round(previous);
   const improved = delta === null || delta === 0 ? null : lowerIsBetter ? delta < 0 : delta > 0;
 
+  const content = (
+    <div
+      className={`font-bold tabular-nums transition-transform ${
+        metric.colorClass || "text-blue-600 dark:text-blue-400"
+      }`}
+    >
+      {rounded}
+      {kind === "percent" ? "%" : ""}
+    </div>
+  );
+
   return (
     <td className="py-3 px-3 text-center">
-      <div className="font-bold text-blue-600 dark:text-blue-400 tabular-nums">
-        {rounded}
-        {kind === "percent" ? "%" : ""}
-      </div>
+      {metric.href ? (
+        <Link
+          href={metric.href}
+          target={metric.target ?? "_blank"}
+          rel="noopener noreferrer"
+          className="inline-block hover:scale-110 cursor-pointer"
+          title={`Click to open full verbose details in a new page`}
+        >
+          {content}
+        </Link>
+      ) : (
+        content
+      )}
       <div
         className={`text-[10px] tabular-nums ${
           improved === null
@@ -66,6 +92,8 @@ export default async function SiteAuditDirectoryPage({
 }) {
   const query = searchParams ? await searchParams : {};
   const q = typeof query.q === "string" ? query.q.trim().toLowerCase() : "";
+
+  await syncProjectsFromFirebase();
 
   const [rawProjects, allCrawls] = await Promise.all([
     db.select().from(projects).orderBy(projects.name),
@@ -208,6 +236,10 @@ export default async function SiteAuditDirectoryPage({
                       previous: prev ? prev.warningCount : null,
                       kind: "count",
                       lowerIsBetter: true,
+                      colorClass:
+                        "text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300 font-extrabold text-[15px] underline decoration-amber-500/50 hover:decoration-amber-500 underline-offset-4",
+                      href: `/${slug}/audit/warnings`,
+                      target: "_blank",
                     },
                     {
                       value: crawl?.crawlabilityScore ?? null,
@@ -261,13 +293,33 @@ export default async function SiteAuditDirectoryPage({
                         <span className="text-[11px] text-muted-foreground block truncate mt-0.5">
                           {pDomain}
                         </span>
-                        <Link
-                          href={`/site-audit/settings?project=${slug}`}
-                          className="mt-1 text-muted-foreground hover:text-foreground inline-flex items-center gap-1 cursor-pointer p-0.5"
-                          title="Site Audit Settings"
-                        >
-                          <Settings className="size-3" />
-                        </Link>
+                        <div className="mt-1 flex items-center gap-2">
+                          <Link
+                            href={`/site-audit/settings?project=${slug}`}
+                            className="text-muted-foreground hover:text-foreground inline-flex items-center cursor-pointer p-0.5 rounded transition-colors"
+                            title="Site Audit Settings"
+                          >
+                            <Settings className="size-3" />
+                          </Link>
+                          <ConfirmDelete
+                            action={deleteProjectAction}
+                            id={p.id}
+                            extraInputs={{ redirectTo: "/site-audit" }}
+                            title={`Delete ${p.name}?`}
+                            description="Every crawl, audit issue, keyword, ranking and backlink stored for this project is deleted with it. This cannot be undone."
+                            confirmLabel="Delete project"
+                            trigger={
+                              <button
+                                type="button"
+                                className="text-muted-foreground hover:text-red-600 dark:hover:text-red-400 inline-flex items-center cursor-pointer p-0.5 rounded transition-colors"
+                                title="Delete project"
+                                aria-label={`Delete ${p.name}`}
+                              >
+                                <Trash2 className="size-3" />
+                              </button>
+                            }
+                          />
+                        </div>
                       </td>
 
                       {/* Last Update */}

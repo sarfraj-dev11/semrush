@@ -11,12 +11,27 @@ import type { KeywordRow } from "@/lib/keyword-stats";
 export const getProjectWithClient = cache(async (projectId: number) => {
   if (!Number.isInteger(projectId) || projectId <= 0) return null;
 
-  const rows = await db
+  let rows = await db
     .select({ project: projects, client: clients })
     .from(projects)
     .innerJoin(clients, eq(projects.clientId, clients.id))
     .where(eq(projects.id, projectId))
     .limit(1);
+
+  if (!rows[0]) {
+    try {
+      const { syncProjectsFromFirebase } = await import("@/lib/firebase-tracking");
+      await syncProjectsFromFirebase();
+      rows = await db
+        .select({ project: projects, client: clients })
+        .from(projects)
+        .innerJoin(clients, eq(projects.clientId, clients.id))
+        .where(eq(projects.id, projectId))
+        .limit(1);
+    } catch (err) {
+      console.error("❌ [queries] Failed to sync project from Firebase:", err);
+    }
+  }
 
   return rows[0] ?? null;
 });

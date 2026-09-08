@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Clock, Play, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { runRankCheckAction } from "./tracking-actions";
+import { runRankCheckAction, syncFirebaseDataAction } from "./tracking-actions";
 
 export function DailyTrackingBanner({
   projectId,
@@ -19,6 +19,7 @@ export function DailyTrackingBanner({
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const handleRunCheck = async () => {
@@ -39,6 +40,27 @@ export function DailyTrackingBanner({
       setFeedback(`❌ ${err instanceof Error ? err.message : "Error running check"}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSyncFirebase = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    setFeedback(null);
+
+    try {
+      const res = await syncFirebaseDataAction(projectId);
+      if (res.success) {
+        setFeedback(`✅ ${res.message}`);
+        router.refresh();
+      } else {
+        setFeedback(`⚠️ ${res.message}`);
+      }
+    } catch (err) {
+      console.error("❌ Failed to fetch Firebase data:", err);
+      setFeedback(`❌ ${err instanceof Error ? err.message : "Error fetching from Firebase"}`);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -76,6 +98,18 @@ export function DailyTrackingBanner({
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleSyncFirebase}
+            disabled={syncing || loading}
+            className="h-9 gap-1.5 px-3 font-medium text-[12px] shadow-xs"
+            title="Fetch latest rankings and keywords from Firebase"
+          >
+            <RefreshCw className={`size-3.5 ${syncing ? "animate-spin" : ""}`} />
+            <span>{syncing ? "Syncing…" : "Fetch from Firebase"}</span>
+          </Button>
+
           <Button
             variant="primary"
             size="sm"

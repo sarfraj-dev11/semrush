@@ -22,6 +22,7 @@ export function ConfirmDelete({
   description,
   confirmLabel = "Delete",
   trigger,
+  extraInputs,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   id: number;
@@ -29,6 +30,7 @@ export function ConfirmDelete({
   description: string;
   confirmLabel?: string;
   trigger: React.ReactNode;
+  extraInputs?: Record<string, string | number>;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -49,6 +51,10 @@ export function ConfirmDelete({
           </DialogClose>
           <form action={action}>
             <input type="hidden" name="id" value={id} />
+            {extraInputs &&
+              Object.entries(extraInputs).map(([name, value]) => (
+                <input key={name} type="hidden" name={name} value={String(value)} />
+              ))}
             <SubmitButton variant="danger">{confirmLabel}</SubmitButton>
           </form>
         </DialogFooter>

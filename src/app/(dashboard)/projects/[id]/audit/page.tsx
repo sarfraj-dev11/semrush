@@ -94,15 +94,25 @@ export default async function AuditPage({
       <div className="space-y-5">
         <AutoRefresh enabled />
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Crawl in progress</CardTitle>
-            <Badge tone="accent">{activeJob.status}</Badge>
+            <div className="flex items-center gap-2">
+              <span className="rounded-md bg-indigo-600/10 dark:bg-indigo-400/10 px-2 py-0.5 text-[12px] font-extrabold font-mono text-indigo-600 dark:text-indigo-400 tabular-nums border border-indigo-600/20 dark:border-indigo-400/20">
+                {activeJob.progress}%
+              </span>
+              <Badge tone="accent" className="capitalize">{activeJob.status}</Badge>
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             <Progress value={activeJob.progress} />
-            <p className="text-[13px] text-muted-foreground">
-              {activeJob.progressLabel ?? "Waiting for the worker to pick this up…"}
-            </p>
+            <div className="flex items-center justify-between text-[13px]">
+              <p className="text-muted-foreground">
+                {activeJob.progressLabel ?? "Waiting for the worker to pick this up…"}
+              </p>
+              <span className="font-bold text-foreground tabular-nums">
+                {activeJob.progress}% completed
+              </span>
+            </div>
             <p className="text-[12px] text-subtle-foreground">
               Started {formatRelative(activeJob.createdAt)}. You can leave this
               page — progress is tracked on{" "}

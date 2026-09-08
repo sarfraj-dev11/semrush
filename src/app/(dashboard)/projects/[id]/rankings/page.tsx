@@ -27,6 +27,7 @@ import { keywordRankings, keywords } from "@/db/schema";
 import { getProjectWithClient } from "@/lib/queries";
 import { getCountryFlagUrl } from "@/lib/countries";
 import { formatDate, formatNumber } from "@/lib/utils";
+import { syncKeywordsAndRankingsFromFirebase } from "@/lib/firebase-tracking";
 import {
   KeywordMonthlyRankViewer,
   PositionDistributionChart,
@@ -57,6 +58,9 @@ export default async function RankingsPage({
   const projectId = Number(id);
   const record = await getProjectWithClient(projectId);
   if (!record) notFound();
+
+  // Sync latest keywords and rankings from Firebase
+  await syncKeywordsAndRankingsFromFirebase(projectId);
 
   const query = await searchParams;
   const q = typeof query.q === "string" ? query.q.trim() : "";

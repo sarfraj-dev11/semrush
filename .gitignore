@@ -49,3 +49,7 @@ functions/node_modules/
 
 .vercel
 .env*
+
+# scratch & agents
+scratch/
+.agents/

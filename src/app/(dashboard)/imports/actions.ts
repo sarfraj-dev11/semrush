@@ -93,7 +93,9 @@ export async function executeImportAction(
           .where(and(eq(keywords.projectId, projectId), eq(keywords.keyword, kw)))
           .limit(1);
 
+        let kwId: number;
         if (existing) {
+          kwId = existing.id;
           await db
             .update(keywords)
             .set({
@@ -106,7 +108,27 @@ export async function executeImportAction(
             })
             .where(eq(keywords.id, existing.id));
         } else {
-          await db.insert(keywords).values({
+          const [inserted] = await db
+            .insert(keywords)
+            .values({
+              projectId,
+              keyword: kw,
+              searchVolume: vol,
+              difficulty: diff,
+              cpc,
+              intent,
+              targetUrl,
+              tags,
+            })
+            .returning({ id: keywords.id });
+          kwId = inserted.id;
+        }
+
+        // Sync keyword to Firebase for cloud rank tracking
+        try {
+          const { syncKeywordToFirebase } = await import("@/lib/firebase-tracking");
+          await syncKeywordToFirebase({
+            id: kwId,
             projectId,
             keyword: kw,
             searchVolume: vol,
@@ -116,7 +138,10 @@ export async function executeImportAction(
             targetUrl,
             tags,
           });
+        } catch (fbErr) {
+          console.error("❌ Failed to sync imported keyword to Firebase:", fbErr);
         }
+
         importedCount++;
       }
     } else if (sourceType === "rankings") {

@@ -232,3 +232,205 @@ export function getCountryFlagUrl(countryCode?: string | null): string {
   return `https://flagcdn.com/w40/${countryCode.toLowerCase()}.png`;
 }
 
+// ─── Zero-Permission Country Detection ────────────────────────────────────────
+
+const TIMEZONE_TO_COUNTRY: Record<string, string> = {
+  // India
+  "Asia/Calcutta": "IN",
+  "Asia/Kolkata": "IN",
+
+  // United States & Territories
+  "America/New_York": "US",
+  "America/Detroit": "US",
+  "America/Kentucky/Louisville": "US",
+  "America/Kentucky/Monticello": "US",
+  "America/Indiana/Indianapolis": "US",
+  "America/Indiana/Vincennes": "US",
+  "America/Indiana/Winamac": "US",
+  "America/Indiana/Marengo": "US",
+  "America/Indiana/Petersburg": "US",
+  "America/Indiana/Vevay": "US",
+  "America/Chicago": "US",
+  "America/Indiana/Tell_City": "US",
+  "America/Indiana/Knox": "US",
+  "America/Menominee": "US",
+  "America/North_Dakota/Center": "US",
+  "America/North_Dakota/New_Salem": "US",
+  "America/North_Dakota/Beulah": "US",
+  "America/Denver": "US",
+  "America/Boise": "US",
+  "America/Phoenix": "US",
+  "America/Los_Angeles": "US",
+  "America/Anchorage": "US",
+  "America/Juneau": "US",
+  "America/Sitka": "US",
+  "America/Metlakatla": "US",
+  "America/Yakutat": "US",
+  "America/Nome": "US",
+  "America/Adak": "US",
+  "Pacific/Honolulu": "US",
+
+  // United Kingdom
+  "Europe/London": "GB",
+  "Europe/Belfast": "GB",
+
+  // Canada
+  "America/Toronto": "CA",
+  "America/Montreal": "CA",
+  "America/Vancouver": "CA",
+  "America/Edmonton": "CA",
+  "America/Winnipeg": "CA",
+  "America/Halifax": "CA",
+  "America/St_Johns": "CA",
+  "America/Regina": "CA",
+
+  // Australia
+  "Australia/Sydney": "AU",
+  "Australia/Melbourne": "AU",
+  "Australia/Brisbane": "AU",
+  "Australia/Perth": "AU",
+  "Australia/Adelaide": "AU",
+  "Australia/Hobart": "AU",
+  "Australia/Darwin": "AU",
+
+  // Germany
+  "Europe/Berlin": "DE",
+  "Europe/Busingen": "DE",
+
+  // France
+  "Europe/Paris": "FR",
+
+  // UAE & Gulf
+  "Asia/Dubai": "AE",
+  "Asia/Riyadh": "SA",
+  "Asia/Qatar": "QA",
+  "Asia/Kuwait": "KW",
+  "Asia/Muscat": "OM",
+  "Asia/Bahrain": "BH",
+
+  // East Asia
+  "Asia/Singapore": "SG",
+  "Asia/Tokyo": "JP",
+  "Asia/Seoul": "KR",
+  "Asia/Shanghai": "CN",
+  "Asia/Hong_Kong": "HK",
+  "Asia/Taipei": "TW",
+
+  // South / Southeast Asia
+  "Asia/Dhaka": "BD",
+  "Asia/Karachi": "PK",
+  "Asia/Colombo": "LK",
+  "Asia/Kathmandu": "NP",
+  "Asia/Kuala_Lumpur": "MY",
+  "Asia/Manila": "PH",
+  "Asia/Jakarta": "ID",
+  "Asia/Bangkok": "TH",
+  "Asia/Ho_Chi_Minh": "VN",
+
+  // Europe
+  "Europe/Rome": "IT",
+  "Europe/Madrid": "ES",
+  "Europe/Amsterdam": "NL",
+  "Europe/Brussels": "BE",
+  "Europe/Vienna": "AT",
+  "Europe/Zurich": "CH",
+  "Europe/Stockholm": "SE",
+  "Europe/Oslo": "NO",
+  "Europe/Copenhagen": "DK",
+  "Europe/Helsinki": "FI",
+  "Europe/Dublin": "IE",
+  "Europe/Warsaw": "PL",
+  "Europe/Prague": "CZ",
+  "Europe/Lisbon": "PT",
+  "Europe/Athens": "GR",
+  "Europe/Budapest": "HU",
+  "Europe/Bucharest": "RO",
+  "Europe/Istanbul": "TR",
+  "Europe/Kyiv": "UA",
+
+  // Americas
+  "America/Sao_Paulo": "BR",
+  "America/Mexico_City": "MX",
+  "America/Buenos_Aires": "AR",
+  "America/Santiago": "CL",
+  "America/Bogota": "CO",
+  "America/Lima": "PE",
+
+  // Africa
+  "Africa/Johannesburg": "ZA",
+  "Africa/Cairo": "EG",
+  "Africa/Lagos": "NG",
+  "Africa/Nairobi": "KE",
+
+  // New Zealand
+  "Pacific/Auckland": "NZ",
+};
+
+/**
+ * Synchronously detects the user's country code (e.g. "IN", "US", "GB")
+ * WITHOUT requesting any browser location permission.
+ * Reads the client's Intl TimeZone and browser Locale Region.
+ */
+export function detectUserCountry(): string {
+  if (typeof window === "undefined") return "US";
+
+  try {
+    // 1. Timezone-based lookup (Instant, 100% zero permissions)
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz && TIMEZONE_TO_COUNTRY[tz]) {
+      return TIMEZONE_TO_COUNTRY[tz];
+    }
+
+    // 2. Locale region lookup (e.g. "en-IN" -> "IN", zero permissions)
+    const navLocale =
+      navigator.language || (navigator.languages && navigator.languages[0]);
+    if (navLocale) {
+      try {
+        const localeObj = new Intl.Locale(navLocale);
+        if (
+          localeObj.region &&
+          ALL_COUNTRIES.some((c) => c.code === localeObj.region?.toUpperCase())
+        ) {
+          return localeObj.region.toUpperCase();
+        }
+      } catch {
+        const parts = navLocale.split("-");
+        if (parts.length > 1) {
+          const region = parts[1].toUpperCase();
+          if (ALL_COUNTRIES.some((c) => c.code === region)) {
+            return region;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("⚠️ [CountryDetection] Failed to detect from timezone/locale:", err);
+  }
+
+  return "US";
+}
+
+/**
+ * Fast IP-based country lookup fallback (Zero permission popup).
+ */
+export async function detectCountryFromIP(): Promise<string | null> {
+  try {
+    const res = await fetch("https://api.country.is", {
+      signal: AbortSignal.timeout(2000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (
+        data?.country &&
+        ALL_COUNTRIES.some((c) => c.code === data.country)
+      ) {
+        return data.country;
+      }
+    }
+  } catch {
+    // IP service unreachable or offline
+  }
+  return null;
+}
+
+

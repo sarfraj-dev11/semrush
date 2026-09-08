@@ -6,9 +6,11 @@ import {
   Link2,
   Plus,
   ShieldCheck,
+  Trash2,
   TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
+import { ConfirmDelete } from "@/components/confirm-delete";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/ui/empty";
@@ -18,12 +20,18 @@ import { backlinks, clients, crawls, keywords, projects } from "@/db/schema";
 import { toProjectSlug } from "@/lib/slug-utils";
 import { getCountryFlagUrl } from "@/lib/countries";
 import { formatNumber, hostnameOf } from "@/lib/utils";
+import { getFirebaseProjects, syncProjectsFromFirebase } from "@/lib/firebase-tracking";
+import { deleteProjectAction } from "./actions";
 import { ProjectFormDialog } from "./project-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProjectsPage() {
-  const [projectRows, clientOptions, allCrawls, allKeywords, allBacklinks] =
+  await syncProjectsFromFirebase().catch((err) => {
+    console.error("⚠️ [ProjectsPage] Failed to sync Firestore projects:", err);
+  });
+
+  const [projectRows, clientOptions, allCrawls, allKeywords, allBacklinks, fbProjects] =
     await Promise.all([
       db
         .select({
@@ -37,7 +45,7 @@ export default async function ProjectsPage() {
           clientName: clients.name,
         })
         .from(projects)
-        .innerJoin(clients, eq(projects.clientId, clients.id))
+        .leftJoin(clients, eq(projects.clientId, clients.id))
         .orderBy(asc(projects.name)),
       db
         .select({ id: clients.id, name: clients.name })
@@ -61,7 +69,13 @@ export default async function ProjectsPage() {
           sourceDomain: backlinks.sourceDomain,
         })
         .from(backlinks),
+      getFirebaseProjects().catch((err) => {
+        console.error("❌ [ProjectsPage] Failed to fetch Firestore projects:", err);
+        return [];
+      }),
     ]);
+
+  const fbProjectIds = new Set(fbProjects.map((p) => p.id));
 
   // Aggregate latest completed crawl by project
   const latestCrawlByProject = new Map<number, (typeof allCrawls)[0]>();
@@ -93,6 +107,7 @@ export default async function ProjectsPage() {
     clientOptions.length > 0 ? (
       <ProjectFormDialog
         clients={clientOptions}
+        defaultClientId={clientOptions[0]?.id}
         trigger={
           <Button variant="primary">
             <Plus className="size-4 mr-1.5" />
@@ -199,12 +214,34 @@ export default async function ProjectsPage() {
                       </a>
                     </div>
 
-                    <Link
-                      href={`/clients/${project.clientId}`}
-                      className="text-[12px] font-medium text-muted-foreground hover:text-foreground border border-border rounded-md px-2 py-0.5"
-                    >
-                      {project.clientName}
-                    </Link>
+                    <div className="flex items-center gap-1.5">
+                      {project.clientName ? (
+                        <Link
+                          href={`/clients/${project.clientId}`}
+                          className="text-[12px] font-medium text-muted-foreground hover:text-foreground border border-border rounded-md px-2 py-0.5 transition-colors"
+                        >
+                          {project.clientName}
+                        </Link>
+                      ) : null}
+                      <ConfirmDelete
+                        action={deleteProjectAction}
+                        id={project.id}
+                        extraInputs={{ redirectTo: "/projects" }}
+                        title={`Delete ${project.name}?`}
+                        description="Every crawl, audit issue, keyword, ranking and backlink stored for this project is deleted with it. This cannot be undone."
+                        confirmLabel="Delete project"
+                        trigger={
+                          <button
+                            type="button"
+                            className="text-muted-foreground hover:text-red-600 dark:hover:text-red-400 p-1 rounded-md transition-colors cursor-pointer"
+                            title="Delete project"
+                            aria-label={`Delete ${project.name}`}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        }
+                      />
+                    </div>
                   </div>
 
                   {/* Toolkit Summary Cards Grid */}

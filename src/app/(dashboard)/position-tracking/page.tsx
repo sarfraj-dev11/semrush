@@ -9,6 +9,7 @@ import { getKeywordRows } from "@/lib/queries";
 import { getSearchProvider } from "@/lib/search/registry";
 import "@/lib/search/providers";
 import { toProjectSlug } from "@/lib/slug-utils";
+import { syncFromFirebase } from "@/lib/firebase-tracking";
 import { formatDate, hostnameOf } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -68,8 +69,6 @@ function DeviceBadge({ device }: { device: string }) {
   );
 }
 
-
-
 export default async function PositionTrackingDirectoryPage({
   searchParams,
 }: {
@@ -78,18 +77,26 @@ export default async function PositionTrackingDirectoryPage({
   const { q = "", device: deviceFilter } = await searchParams;
   const filter = q.trim().toLowerCase();
 
+  // Sync projects and latest rankings from Firebase
+  await syncFromFirebase().catch((err) => {
+    console.error("⚠️ [PositionTracking] Failed to sync from Firebase:", err);
+  });
+
   const [allProjects, provider] = await Promise.all([
     db.select().from(projects).orderBy(projects.name),
     getSearchProvider(),
   ]);
 
-  const visible = filter
-    ? allProjects.filter(
-        (p) =>
-          p.name.toLowerCase().includes(filter) ||
-          p.domain.toLowerCase().includes(filter),
-      )
-    : allProjects;
+  const visible = allProjects.filter((p) => {
+    const matchesFilter = filter
+      ? p.name.toLowerCase().includes(filter) ||
+        p.domain.toLowerCase().includes(filter)
+      : true;
+    const matchesDevice = deviceFilter
+      ? p.targetDevice === deviceFilter || p.targetDevice === "both"
+      : true;
+    return matchesFilter && matchesDevice;
+  });
 
   const summaries = await Promise.all(
     visible.map(async (p) => {
@@ -223,7 +230,7 @@ export default async function PositionTrackingDirectoryPage({
                     <tr key={p.id} className="transition-colors hover:bg-surface-muted/40">
                       <td className="px-4 py-3.5">
                         <Link
-                          href={`/${slug}/rankings`}
+                          href={`/projects/${p.id}/rankings`}
                           className="block truncate text-[13px] font-bold text-blue-600 hover:underline dark:text-blue-400"
                         >
                           {p.name}

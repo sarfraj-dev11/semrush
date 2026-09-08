@@ -19,7 +19,9 @@ export async function createProjectAction(
 ): Promise<ActionState> {
   const parsed = projectSchema.safeParse({
     ...formToObject(formData),
-    respectRobots: readCheckbox(formData, "respectRobots"),
+    respectRobots: formData.has("respectRobots")
+      ? readCheckbox(formData, "respectRobots")
+      : true,
   });
   if (!parsed.success) return toActionState(parsed.error);
 
@@ -57,8 +59,11 @@ export async function updateProjectAction(
 
   const parsed = projectSchema.safeParse({
     ...formToObject(formData),
-    respectRobots: readCheckbox(formData, "respectRobots"),
+    respectRobots: formData.has("respectRobots")
+      ? readCheckbox(formData, "respectRobots")
+      : true,
   });
+
   if (!parsed.success) return toActionState(parsed.error);
 
   await db
@@ -102,7 +107,14 @@ export async function deleteProjectAction(formData: FormData) {
     console.error("❌ Firebase sync failed (project delete):", err);
   }
 
+  const redirectTo = formData.get("redirectTo");
   revalidatePath("/projects");
+  revalidatePath("/site-audit");
   revalidatePath("/");
-  redirect("/projects");
+
+  if (typeof redirectTo === "string" && redirectTo.startsWith("/")) {
+    redirect(redirectTo);
+  } else {
+    redirect("/projects");
+  }
 }

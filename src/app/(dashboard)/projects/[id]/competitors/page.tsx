@@ -20,6 +20,7 @@ import { db } from "@/db";
 import { backlinks, competitors, keywords } from "@/db/schema";
 import { getLatestCompletedCrawl, getProjectWithClient } from "@/lib/queries";
 import { formatNumber, hostnameOf } from "@/lib/utils";
+import { syncCompetitorsFromFirebase } from "@/lib/firebase-tracking";
 import { deleteCompetitorAction } from "./actions";
 import { CompetitorDialog } from "./competitor-dialog";
 
@@ -34,6 +35,11 @@ export default async function CompetitorsPage({
   const projectId = Number(id);
   const record = await getProjectWithClient(projectId);
   if (!record) notFound();
+
+  // Sync competitors from Firebase
+  await syncCompetitorsFromFirebase(projectId).catch((err) => {
+    console.error("⚠️ [CompetitorsPage] Failed to sync competitors from Firebase:", err);
+  });
 
   const { project } = record;
   const [crawl, projectKeywords, projectBacklinks, competitorList] =

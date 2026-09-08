@@ -48,7 +48,18 @@ import {
 import { findProjectBySlugOrId, toProjectSlug } from "@/lib/slugs";
 import { formatDateTime, formatNumber, formatRelative, hostnameOf } from "@/lib/utils";
 import { startCrawlAction } from "@/app/(dashboard)/projects/[id]/audit/actions";
+import { cancelJobAction } from "@/app/(dashboard)/jobs/actions";
 import { TaskDialog } from "@/app/(dashboard)/projects/[id]/tasks/task-dialog";
+import {
+  SiteHealthInfoModal,
+  ErrorsInfoModal,
+  WarningsInfoModal,
+  NoticesInfoModal,
+  CrawledPagesInfoModal,
+  AISearchInfoModal,
+  RobotsTxtInfoModal,
+} from "./site-health-info-modal";
+import { LlmsTxtCard } from "./llms-txt-card";
 
 export const dynamic = "force-dynamic";
 
@@ -553,20 +564,53 @@ export default async function ProjectAuditPage({
         <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-950/20 p-5 shadow-xs">
           <AutoRefresh enabled />
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <RefreshCw className="size-4 animate-spin text-indigo-600 dark:text-indigo-400" />
               <h3 className="text-[14px] font-bold text-foreground">
                 Crawl in progress for {domain}
               </h3>
             </div>
-            <Badge tone="accent">{activeJob.status}</Badge>
+            <div className="flex items-center gap-2">
+              <span className="rounded-md bg-indigo-600/10 dark:bg-indigo-400/10 px-2 py-0.5 text-[12px] font-extrabold font-mono text-indigo-600 dark:text-indigo-400 tabular-nums border border-indigo-600/20 dark:border-indigo-400/20">
+                {activeJob.progress}%
+              </span>
+              <Badge tone="accent" className="capitalize">
+                {activeJob.status}
+              </Badge>
+              <form action={cancelJobAction}>
+                <input type="hidden" name="id" value={activeJob.id} />
+                <button
+                  type="submit"
+                  className="text-[11px] font-semibold text-muted-foreground hover:text-red-500 transition-colors ml-1 px-2 py-0.5 rounded border border-border hover:border-red-500/30 hover:bg-red-500/10 cursor-pointer"
+                  title="Cancel this crawl"
+                >
+                  Cancel
+                </button>
+              </form>
+            </div>
           </div>
-          <div className="mt-3 h-2 w-full rounded-full bg-indigo-100 dark:bg-zinc-800 overflow-hidden">
-            <div className="h-full w-2/5 rounded-full bg-indigo-600 animate-stripes" />
+          <div className="mt-3 h-2.5 w-full rounded-full bg-indigo-100 dark:bg-zinc-800 overflow-hidden relative">
+            <div
+              className="h-full rounded-full bg-indigo-600 dark:bg-indigo-500 animate-stripes transition-all duration-500 ease-out"
+              style={{
+                width: `${Math.max(activeJob.status === "queued" ? 4 : 2, Math.min(100, activeJob.progress))}%`,
+              }}
+            />
           </div>
-          <div className="mt-2 flex items-center justify-between text-[12px] text-muted-foreground">
-            <span>{activeJob.progressLabel ?? "Analyzing pages and discovering links..."}</span>
-            <span>Started {formatRelative(activeJob.createdAt)}</span>
+          <div className="mt-2.5 flex items-center justify-between text-[12px] text-muted-foreground">
+            <span>
+              {activeJob.progressLabel ??
+                (activeJob.status === "queued"
+                  ? "Queued in worker — initializing crawl..."
+                  : "Analyzing pages and discovering links...")}
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-foreground tabular-nums">
+                {activeJob.progress}% completed
+              </span>
+              <span>·</span>
+              <span>Started {formatRelative(activeJob.createdAt)}</span>
+            </div>
           </div>
         </div>
       ) : null}
@@ -614,7 +658,14 @@ export default async function ProjectAuditPage({
           <div>
             <div className="flex items-center justify-between text-[12px] text-muted-foreground font-semibold uppercase tracking-wider">
               <span>Site Health</span>
-              <Info className="size-3.5 text-subtle-foreground" />
+              <SiteHealthInfoModal
+                healthScore={healthScore}
+                pagesCrawled={pagesCrawled}
+                criticalCount={criticalCount}
+                warningCount={warningCount}
+                noticeCount={noticeCount}
+                slug={slug}
+              />
             </div>
 
             <div className="mt-6 flex flex-col items-center justify-center text-center">
@@ -680,7 +731,7 @@ export default async function ProjectAuditPage({
                   Errors
                 </span>
               </div>
-              <Info className="size-3 text-subtle-foreground" />
+              <ErrorsInfoModal criticalCount={criticalCount} />
             </div>
             <div className="mt-4">
               <div className="text-[32px] font-extrabold text-red-600 dark:text-red-400 font-display leading-none">
@@ -694,7 +745,7 @@ export default async function ProjectAuditPage({
           </div>
 
           {/* Warnings */}
-          <div className="rounded-xl border border-border bg-surface p-5 shadow-xs flex flex-col justify-between">
+          <div className="rounded-xl border border-border bg-surface p-5 shadow-xs flex flex-col justify-between hover:border-amber-500/40 transition-colors">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="size-2 rounded-full bg-amber-500" />
@@ -702,15 +753,42 @@ export default async function ProjectAuditPage({
                   Warnings
                 </span>
               </div>
-              <Info className="size-3 text-subtle-foreground" />
+              <div className="flex items-center gap-1">
+                <WarningsInfoModal warningCount={warningCount} slug={slug} />
+                <Link
+                  href={`/${slug}/audit/warnings`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-full p-1 text-muted-foreground hover:text-amber-500 hover:bg-surface-muted transition-colors cursor-pointer"
+                  title="Open all warnings in a new verbose page"
+                >
+                  <ArrowUpRight className="size-3.5" />
+                </Link>
+              </div>
             </div>
             <div className="mt-4">
-              <div className="text-[32px] font-extrabold text-amber-600 dark:text-amber-400 font-display leading-none">
-                {warningCount}
+              <Link
+                href={`/${slug}/audit/warnings`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group/num inline-block"
+                title="Click to view all warnings"
+              >
+                <div className="text-[32px] font-extrabold text-amber-500 font-display leading-none group-hover/num:scale-105 transition-transform origin-left">
+                  {warningCount}
+                </div>
+              </Link>
+              <div className="mt-2 text-[12px] text-muted-foreground flex items-center justify-between">
+                <span>{warningCount > 0 ? "Medium priority issues" : "0 warnings"}</span>
+                <Link
+                  href={`/${slug}/audit/warnings`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] font-medium text-amber-600 dark:text-amber-400 hover:underline"
+                >
+                  View full verbose ↗
+                </Link>
               </div>
-              <p className="mt-2 text-[12px] text-muted-foreground">
-                {warningCount > 0 ? "Medium priority issues" : "0 warnings"}
-              </p>
               <Sparkline values={warningTrend} tone="warning" />
             </div>
           </div>
@@ -724,7 +802,7 @@ export default async function ProjectAuditPage({
                   Notices
                 </span>
               </div>
-              <Info className="size-3 text-subtle-foreground" />
+              <NoticesInfoModal noticeCount={noticeCount} />
             </div>
             <div className="mt-4">
               <div className="text-[32px] font-extrabold text-blue-600 dark:text-blue-400 font-display leading-none">
@@ -742,6 +820,7 @@ export default async function ProjectAuditPage({
               <div className="flex items-center gap-2">
                 <span className="text-[13px] font-bold text-foreground">Crawled Pages</span>
                 <span className="text-[12px] text-muted-foreground">({pagesCrawled} / {project.crawlLimit} max)</span>
+                <CrawledPagesInfoModal pagesCrawled={pagesCrawled} crawlLimit={project.crawlLimit} />
               </div>
               <div className="text-[12px] text-muted-foreground">
                 Domain: <span className="font-semibold text-foreground">{domain}</span>
@@ -779,7 +858,10 @@ export default async function ProjectAuditPage({
                 AI Search Health
               </span>
             </div>
-            <Badge tone="accent">beta</Badge>
+            <div className="flex items-center gap-2">
+              <AISearchInfoModal />
+              <Badge tone="accent">beta</Badge>
+            </div>
           </div>
 
           <div className="mt-5 flex items-center gap-6">
@@ -985,6 +1067,7 @@ export default async function ProjectAuditPage({
               <div className="flex items-center gap-2">
                 <ShieldCheck className="size-4 text-zinc-500" />
                 <span className="text-[13px] font-bold text-foreground">Robots.txt</span>
+                <RobotsTxtInfoModal sitemapUrls={crawl?.sitemapUrls} />
               </div>
               <p className="text-[11px] text-muted-foreground">
                 {crawl?.sitemapUrls
@@ -1014,6 +1097,12 @@ export default async function ProjectAuditPage({
               )}
             </div>
           </div>
+
+          {/* llms.txt AI navigation file */}
+          <LlmsTxtCard
+            initialFound={crawl?.llmsTxtFound ?? null}
+            domain={project.domain}
+          />
 
           {thematicReports.map((report) => (
             <ScoreCard

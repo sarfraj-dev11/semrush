@@ -1,7 +1,7 @@
 import { desc } from "drizzle-orm";
 import { Command, Search } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
-import { Sidebar } from "@/components/sidebar";
+import { Sidebar, type SidebarProject } from "@/components/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { db } from "@/db";
 import { projects } from "@/db/schema";
@@ -10,42 +10,69 @@ import { toProjectSlug } from "@/lib/slug-utils";
 export const dynamic = "force-dynamic";
 
 /**
- * The project the sidebar scopes its links to when the current page is not
- * itself a project — the newest one, since that is almost always what someone
- * is working on. Without this, every project-scoped nav item off a standalone
- * page pointed at the project list instead of the report it names.
+ * Fetch projects saved in Firebase Firestore (with fallback to SQLite)
+ * and keep local DB in sync so nav items and links are always accurate.
  */
-async function defaultProjectSlug(): Promise<string> {
+async function getNavProjects(): Promise<SidebarProject[]> {
   try {
-    const [newest] = await db
-      .select({ name: projects.name })
-      .from(projects)
-      .orderBy(desc(projects.id))
-      .limit(1);
+    const { getFirebaseProjects, syncProjectsFromFirebase } = await import(
+      "@/lib/firebase-tracking"
+    );
+    await syncProjectsFromFirebase().catch((err) => {
+      console.error("⚠️ [Layout] Failed to sync Firestore projects:", err);
+    });
 
-    return newest ? toProjectSlug(newest.name) : "";
-  } catch {
-    // The nav must render even if the database is unavailable.
-    return "";
+    const fbProjects = await getFirebaseProjects();
+    if (fbProjects && fbProjects.length > 0) {
+      return fbProjects.map((p) => ({
+        id: p.id,
+        name: p.name,
+        domain: p.domain,
+        targetCountry: p.targetCountry || "US",
+      }));
+    }
+
+    // Fallback to SQLite if Firestore is empty or offline
+    const dbProjects = await db
+      .select({
+        id: projects.id,
+        name: projects.name,
+        domain: projects.domain,
+        targetCountry: projects.targetCountry,
+      })
+      .from(projects)
+      .orderBy(desc(projects.id));
+
+    return dbProjects.map((p) => ({
+      id: p.id,
+      name: p.name,
+      domain: p.domain,
+      targetCountry: p.targetCountry || "US",
+    }));
+  } catch (error) {
+    console.error("❌ [Layout] Error fetching nav projects:", error);
+    return [];
   }
 }
 
 export default async function DashboardLayout({
   children,
 }: LayoutProps<"/">) {
-  const projectSlug = await defaultProjectSlug();
+  const projectList = await getNavProjects();
+  const newest = projectList[0];
+  const projectSlug = newest ? toProjectSlug(newest.name) : "";
 
   return (
     <div className="h-screen w-full overflow-hidden bg-background text-foreground flex">
       {/* Dark Luxury Sidebar */}
-      <Sidebar defaultProjectSlug={projectSlug} />
+      <Sidebar defaultProjectSlug={projectSlug} projects={projectList} />
 
       {/* Floating Canvas Shell (Payflow / Dribbble Signature Card Layout) */}
       <div className="flex-1 lg:pl-64 flex flex-col h-screen overflow-hidden p-2 sm:p-3 lg:p-4 bg-background">
         <div className="flex-1 rounded-[28px] sm:rounded-[36px] bg-canvas-bg border border-border/80 dark:border-white/6 shadow-2xl flex flex-col h-full overflow-hidden">
           {/* Canvas Top Header Bar - Fixed */}
           <header className="shrink-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-border/70 bg-canvas-bg/85 backdrop-blur-xl px-6 sm:px-10 no-print">
-            <MobileNav defaultProjectSlug={projectSlug} />
+            <MobileNav defaultProjectSlug={projectSlug} projects={projectList} />
 
             {/* Payflow-style Pill Search Bar */}
             <div className="hidden sm:flex items-center gap-2.5 rounded-full border border-border/80 bg-surface px-4 py-2 text-muted-foreground w-80 lg:w-[420px] shadow-xs focus-within:border-foreground/40 focus-within:shadow-sm transition-all">

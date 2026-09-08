@@ -4,8 +4,11 @@ import {
   ArrowUpRight,
   BarChart3,
   Flame,
+  Globe,
+  Laptop,
   Minus,
   Plus,
+  Smartphone,
   TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
@@ -22,7 +25,9 @@ import { Table, TableWrap, Tbody, Td, Th, Thead, Tr } from "@/components/ui/tabl
 import { db } from "@/db";
 import { keywordRankings, keywords } from "@/db/schema";
 import { findProjectBySlugOrId, toProjectSlug } from "@/lib/slugs";
+import { getCountryFlagUrl } from "@/lib/countries";
 import { formatDate, formatNumber } from "@/lib/utils";
+import { syncKeywordsAndRankingsFromFirebase } from "@/lib/firebase-tracking";
 import {
   KeywordMonthlyRankViewer,
   PositionDistributionChart,
@@ -86,6 +91,11 @@ export default async function ProjectRankingsPage({
   const projectId = project.id;
   const slug = toProjectSlug(project.name);
 
+  // Sync latest keywords and rankings from Firebase
+  await syncKeywordsAndRankingsFromFirebase(projectId).catch((err) => {
+    console.error("⚠️ [ProjectRankingsPage] Failed to sync from Firebase:", err);
+  });
+
   const query = await searchParams;
   const q = typeof query.q === "string" ? query.q.trim() : "";
 
@@ -99,6 +109,8 @@ export default async function ProjectRankingsPage({
         date: keywordRankings.date,
         position: keywordRankings.position,
         url: keywordRankings.url,
+        device: keywordRankings.device,
+        country: keywordRankings.country,
       })
       .from(keywordRankings)
       .innerJoin(keywords, eq(keywordRankings.keywordId, keywords.id))
@@ -309,6 +321,8 @@ export default async function ProjectRankingsPage({
       delta,
       url: current?.url ?? kw.targetUrl,
       date: current?.date ?? latestDate,
+      device: current?.device ?? null,
+      country: current?.country ?? null,
     };
   });
 
@@ -601,6 +615,8 @@ export default async function ProjectRankingsPage({
                 <Thead>
                   <tr>
                     <Th>Keyword</Th>
+                    <Th className="text-center">Device</Th>
+                    <Th className="text-center">Location</Th>
                     <Th className="text-right">Rank Position</Th>
                     <Th className="text-center">Google Page (1–10)</Th>
                     <Th className="text-right">Change</Th>
@@ -621,6 +637,37 @@ export default async function ProjectRankingsPage({
                         >
                           {r.keyword.keyword}
                         </Link>
+                      </Td>
+                      {/* Device badge */}
+                      <Td className="text-center">
+                        {r.device ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-medium capitalize">
+                            {r.device === "mobile" ? (
+                              <Smartphone className="size-3 text-blue-500" />
+                            ) : (
+                              <Laptop className="size-3 text-purple-500" />
+                            )}
+                            {r.device}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">—</span>
+                        )}
+                      </Td>
+                      {/* Country flag */}
+                      <Td className="text-center">
+                        {r.country ? (
+                          <span className="inline-flex items-center gap-1">
+                            <img
+                              src={getCountryFlagUrl(r.country)}
+                              alt={r.country}
+                              className="h-3 w-4.5 rounded-[2px] border border-border/50 object-cover"
+                              loading="lazy"
+                            />
+                            <span className="text-[10px] font-medium text-muted-foreground">{r.country}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">—</span>
+                        )}
                       </Td>
                       <Td className="text-right tabular-nums font-bold text-[15px]">
                         {r.latestPosition != null ? (

@@ -46,8 +46,8 @@ export default async function ImportsPage() {
   return (
     <div className="animate-in space-y-6">
       <PageHeader
-        title="CSV Data Importer"
-        description="Ingest keyword search volume, ranking positions, backlinks, and competitors from Semrush or Ahrefs exports."
+        title="Excel & CSV Data Importer"
+        description="Ingest keyword lists, search volume, ranking positions, backlinks, and competitors from Excel files (.xlsx, .xls) or Semrush / Ahrefs CSV exports."
       />
 
       {projectList.length === 0 ? (

@@ -204,8 +204,14 @@
   }
 
   ::selection {
-    background-color: var(--foreground);
-    color: var(--background);
+    background-color: #bfdbfe;
+    color: #0f172a;
+  }
+
+  .dark ::selection,
+  :root.dark ::selection {
+    background-color: rgba(59, 130, 246, 0.35);
+    color: #ffffff;
   }
 
   /* Sleek custom scrollbars */

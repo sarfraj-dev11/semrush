@@ -232,6 +232,10 @@ export function parseCsvText(text: string): {
     const line = lines[i];
     if (!line.trim()) continue;
     const values = parseLine(line);
+    // Skip completely empty or delimiter-only separator rows
+    const hasAnyContent = values.some((v) => v && v.trim().length > 0);
+    if (!hasAnyContent) continue;
+
     const row: Record<string, string> = {};
     for (let j = 0; j < headers.length; j++) {
       const header = headers[j];
@@ -311,6 +315,9 @@ export function validateImportRows(
 
   for (let i = 0; i < rawRows.length; i++) {
     const raw = rawRows[i];
+    const isAllBlank = Object.values(raw).every((v) => !v || v.trim().length === 0);
+    if (isAllBlank) continue;
+
     const item: Record<string, unknown> = {};
     let rowError: string | null = null;
 

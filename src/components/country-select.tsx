@@ -1,9 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
 import * as Popover from "@radix-ui/react-popover";
 import { Check, ChevronDown, Globe, Plus, Search, X } from "lucide-react";
-import { ALL_COUNTRIES, getCountryFlagUrl } from "@/lib/countries";
+import {
+  ALL_COUNTRIES,
+  getCountryFlagUrl,
+  detectUserCountry,
+  detectCountryFromIP,
+} from "@/lib/countries";
 import { cn } from "@/lib/utils";
 
 interface CountrySelectProps {
@@ -13,29 +19,59 @@ interface CountrySelectProps {
   value?: string;
   onChange?: (codes: string) => void;
   className?: string;
+  autoDetect?: boolean;
 }
 
 export function CountrySelect({
   name = "targetCountry",
   id = "targetCountry",
-  defaultValue = "US",
+  defaultValue,
   value,
   onChange,
   className,
+  autoDetect = true,
 }: CountrySelectProps) {
-  // Parse initial selection (supports "US,IN" or "US")
+  // Parse initial selection (supports "US,IN" or "US", or auto-detects)
   const initialCodes = useMemo(() => {
-    const raw = (value ?? defaultValue ?? "US").trim();
-    const list = raw
-      .split(",")
-      .map((c) => c.trim().toUpperCase())
-      .filter(Boolean);
-    return list.length > 0 ? list : ["US"];
-  }, [value, defaultValue]);
+    const raw = (value ?? defaultValue)?.trim();
+    if (raw) {
+      const list = raw
+        .split(",")
+        .map((c) => c.trim().toUpperCase())
+        .filter(Boolean);
+      if (list.length > 0) return list;
+    }
+    if (typeof window !== "undefined" && autoDetect) {
+      const detected = detectUserCountry();
+      if (detected) return [detected];
+    }
+    return ["US"];
+  }, [value, defaultValue, autoDetect]);
 
   const [selectedCodes, setSelectedCodes] = useState<string[]>(initialCodes);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+
+  // Auto-detect country on mount if creating a new project (zero permissions required)
+  useEffect(() => {
+    if (!autoDetect || value || defaultValue) return;
+
+    // 1. Instant timezone & locale region detection
+    const detected = detectUserCountry();
+    if (detected) {
+      setSelectedCodes([detected]);
+      onChange?.(detected);
+    }
+
+    // 2. IP lookup fallback to double check
+    detectCountryFromIP().then((ipCountry) => {
+      if (ipCountry && (!selectedCodes.length || selectedCodes[0] === "US")) {
+        setSelectedCodes([ipCountry]);
+        onChange?.(ipCountry);
+      }
+    });
+  }, [autoDetect, value, defaultValue, onChange]);
+
 
   const countryMap = useMemo(() => {
     return new Map(ALL_COUNTRIES.map((c) => [c.code.toUpperCase(), c.name]));

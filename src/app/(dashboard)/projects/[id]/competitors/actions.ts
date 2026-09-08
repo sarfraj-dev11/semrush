@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { competitors } from "@/db/schema";
+import { competitors, projects } from "@/db/schema";
+import { toProjectSlug } from "@/lib/slug-utils";
 
 export async function addCompetitorAction(formData: FormData) {
   const projectId = Number(formData.get("projectId"));
@@ -34,13 +35,43 @@ export async function addCompetitorAction(formData: FormData) {
     throw new Error("This competitor domain is already tracked.");
   }
 
-  await db.insert(competitors).values({
-    projectId,
-    domain,
-    name: name || domain,
-  });
+  const [inserted] = await db
+    .insert(competitors)
+    .values({
+      projectId,
+      domain,
+      name: name || domain,
+    })
+    .returning({ id: competitors.id });
+
+  // Sync to Cloud Firestore
+  try {
+    const { syncCompetitorToFirebase } = await import("@/lib/firebase-tracking");
+    await syncCompetitorToFirebase({
+      id: inserted.id,
+      projectId,
+      domain,
+      name: name || domain,
+      createdAt: new Date(),
+    });
+  } catch (err) {
+    console.error("❌ [addCompetitorAction] Failed to sync competitor to Firebase:", err);
+  }
+
+  // Look up project name to revalidate slug routes
+  const [proj] = await db
+    .select({ name: projects.name })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
 
   revalidatePath(`/projects/${projectId}/competitors`);
+  revalidatePath(`/projects/${projectId}`);
+  if (proj?.name) {
+    const slug = toProjectSlug(proj.name);
+    revalidatePath(`/${slug}/competitors`);
+    revalidatePath(`/${slug}`);
+  }
 }
 
 export async function deleteCompetitorAction(formData: FormData) {
@@ -56,5 +87,26 @@ export async function deleteCompetitorAction(formData: FormData) {
   if (!row) return;
 
   await db.delete(competitors).where(eq(competitors.id, id));
+
+  // Delete from Cloud Firestore
+  try {
+    const { deleteFirebaseCompetitor } = await import("@/lib/firebase-tracking");
+    await deleteFirebaseCompetitor(row.projectId, id);
+  } catch (err) {
+    console.error("❌ [deleteCompetitorAction] Failed to delete competitor from Firebase:", err);
+  }
+
+  const [proj] = await db
+    .select({ name: projects.name })
+    .from(projects)
+    .where(eq(projects.id, row.projectId))
+    .limit(1);
+
   revalidatePath(`/projects/${row.projectId}/competitors`);
+  revalidatePath(`/projects/${row.projectId}`);
+  if (proj?.name) {
+    const slug = toProjectSlug(proj.name);
+    revalidatePath(`/${slug}/competitors`);
+    revalidatePath(`/${slug}`);
+  }
 }

@@ -60,26 +60,52 @@ export function ImportWizard({
     error?: string;
   } | null>(null);
 
+  const [isDragging, setIsDragging] = useState(false);
   const fields = SOURCE_FIELD_DEFINITIONS[sourceType];
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  async function processFile(file: File) {
     setFileName(file.name);
     setImportResult(null);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
+    try {
+      let text = "";
+      const isExcel = /\.(xlsx|xls|xlsm|xlsb|ods)$/i.test(file.name);
+
+      if (isExcel) {
+        const arrayBuffer = await file.arrayBuffer();
+        const XLSX = await import("xlsx");
+        const workbook = XLSX.read(arrayBuffer, { type: "array" });
+        const firstSheetName = workbook.SheetNames[0];
+        if (!firstSheetName) {
+          throw new Error("The uploaded Excel workbook contains no sheets.");
+        }
+        const worksheet = workbook.Sheets[firstSheetName];
+        text = XLSX.utils.sheet_to_csv(worksheet, { blankrows: false });
+      } else {
+        text = await file.text();
+      }
+
       setCsvContent(text);
       const parsed = parseCsvText(text);
       setHeaders(parsed.headers);
       setRows(parsed.rows);
       const detected = autoDetectMapping(sourceType, parsed.headers);
       setMapping(detected);
-    };
-    reader.readAsText(file);
+    } catch (err) {
+      console.error("❌ Failed to process file:", err);
+      setImportResult({
+        success: false,
+        imported: 0,
+        skipped: 0,
+        error: err instanceof Error ? err.message : "Failed to read file.",
+      });
+    }
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    void processFile(file);
   }
 
   function handleSourceTypeChange(type: ImportSourceType) {
@@ -188,22 +214,45 @@ export function ImportWizard({
             </div>
           </div>
 
-          {/* File input */}
-          <div className="rounded-xl border border-dashed border-border bg-surface-muted/50 p-6 text-center">
+          {/* File input / Drag & Drop area */}
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragging(true);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragging(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragging(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file) void processFile(file);
+            }}
+            className={`rounded-xl border border-dashed p-6 text-center transition-all ${
+              isDragging
+                ? "border-accent bg-accent/10 scale-[1.01]"
+                : "border-border bg-surface-muted/50 hover:bg-surface-muted/80"
+            }`}
+          >
             <FileSpreadsheet className="mx-auto size-8 text-muted-foreground/60 mb-2" />
             <p className="text-[14px] font-medium text-foreground">
-              {fileName ? fileName : "Select or drop a CSV export file"}
+              {fileName ? fileName : "Select or drop an Excel (.xlsx, .xls) or CSV file"}
             </p>
             <p className="text-[12px] text-subtle-foreground mt-0.5">
-              Supports standard exports from Semrush, Ahrefs, Moz, or custom CSVs.
+              Supports Excel spreadsheets (.xlsx, .xls), Semrush, Ahrefs, Moz, or custom keyword lists.
             </p>
             <label className="mt-3 inline-block">
               <span className="inline-flex cursor-pointer items-center justify-center rounded-[10px] bg-surface border border-border px-3.5 py-1.5 text-[13px] font-medium text-foreground hover:bg-surface-raised shadow-xs">
-                Browse CSV file
+                Browse Excel or CSV file
               </span>
               <input
                 type="file"
-                accept=".csv,.tsv,.txt"
+                accept=".xlsx,.xls,.csv,.tsv,.txt"
                 onChange={handleFileChange}
                 className="hidden"
               />

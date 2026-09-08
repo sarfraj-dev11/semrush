@@ -56,14 +56,15 @@ export function ProjectFormDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-lg">
         <form action={formAction}>
           {editing ? <input type="hidden" name="id" value={project!.id} /> : null}
           <DialogHeader>
             <DialogTitle>{editing ? "Edit project" : "New project"}</DialogTitle>
             <DialogDescription>
-              A project is one site. The crawl settings below bound every audit
-              run for it.
+              {editing
+                ? "Update your project domain and tracking preferences."
+                : "Add a website to track keyword rankings and performance."}
             </DialogDescription>
           </DialogHeader>
 
@@ -76,7 +77,7 @@ export function ProjectFormDialog({
                 <NativeSelect
                   id="clientId"
                   name="clientId"
-                  defaultValue={project?.clientId ?? defaultClientId ?? ""}
+                  defaultValue={project?.clientId ?? defaultClientId ?? (clients.length > 0 ? clients[0].id : "")}
                   required
                 >
                   <option value="" disabled>
@@ -114,7 +115,7 @@ export function ProjectFormDialog({
               />
               <FieldError state={state} name="domain" />
               <p className="text-[12px] text-subtle-foreground">
-                Crawls start here and stay on this host.
+                Rankings and audits will be tracked for this domain.
               </p>
             </div>
 
@@ -124,8 +125,9 @@ export function ProjectFormDialog({
                 <CountrySelect
                   id="targetCountry"
                   name="targetCountry"
-                  defaultValue={project?.targetCountry ?? "US"}
+                  defaultValue={project?.targetCountry}
                 />
+
                 <FieldError state={state} name="targetCountry" />
               </div>
               <div className="space-y-1.5">
@@ -141,80 +143,8 @@ export function ProjectFormDialog({
                 </NativeSelect>
               </div>
             </FormRow>
-
-            <div className="rounded-[10px] border border-border bg-surface-muted p-4">
-              <p className="mb-3 text-[13px] font-medium">Crawl settings</p>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="crawlDepth">Max depth</Label>
-                  <Input
-                    id="crawlDepth"
-                    name="crawlDepth"
-                    type="number"
-                    min={1}
-                    max={10}
-                    defaultValue={project?.crawlDepth ?? 3}
-                  />
-                  <FieldError state={state} name="crawlDepth" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="crawlLimit">Page limit</Label>
-                  <Input
-                    id="crawlLimit"
-                    name="crawlLimit"
-                    type="number"
-                    min={1}
-                    max={10000}
-                    defaultValue={project?.crawlLimit ?? 500}
-                  />
-                  <FieldError state={state} name="crawlLimit" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="crawlConcurrency">Concurrency</Label>
-                  <Input
-                    id="crawlConcurrency"
-                    name="crawlConcurrency"
-                    type="number"
-                    min={1}
-                    max={10}
-                    defaultValue={project?.crawlConcurrency ?? 4}
-                  />
-                  <FieldError state={state} name="crawlConcurrency" />
-                </div>
-              </div>
-
-              <label className="mt-4 flex items-center gap-2.5 text-[14px]">
-                <input
-                  type="checkbox"
-                  name="respectRobots"
-                  defaultChecked={project?.respectRobots ?? true}
-                  className="size-4 accent-[var(--accent)]"
-                />
-                Respect robots.txt
-              </label>
-
-              <FormRow className="mt-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="excludePatterns">Exclude URLs containing</Label>
-                  <Input
-                    id="excludePatterns"
-                    name="excludePatterns"
-                    defaultValue={project?.excludePatterns ?? ""}
-                    placeholder="/cart, /search"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="includePatterns">Only URLs containing</Label>
-                  <Input
-                    id="includePatterns"
-                    name="includePatterns"
-                    defaultValue={project?.includePatterns ?? ""}
-                    placeholder="/blog"
-                  />
-                </div>
-              </FormRow>
-            </div>
           </DialogBody>
+
 
           <DialogFooter>
             <DialogClose asChild>

@@ -4,12 +4,14 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Menu, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { SidebarNav } from "@/components/sidebar";
+import { SidebarNav, type SidebarProject } from "@/components/sidebar";
 
 export function MobileNav({
   defaultProjectSlug = "",
+  projects = [],
 }: {
   defaultProjectSlug?: string;
+  projects?: SidebarProject[];
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
@@ -50,6 +52,7 @@ export function MobileNav({
             <SidebarNav
               onNavigate={() => setOpen(false)}
               defaultProjectSlug={defaultProjectSlug}
+              projects={projects}
             />
           </div>
         </DialogPrimitive.Content>
