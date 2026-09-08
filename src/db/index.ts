@@ -71,37 +71,12 @@ function createDbClient(): Client {
             await originalExecute(
               "INSERT OR IGNORE INTO clients (id, name, status) VALUES (12, 'Primary Organization', 'active')"
             );
-            const checkProj = await originalExecute("SELECT id FROM projects LIMIT 1");
-            let defaultProjId = 20;
-            if (checkProj.rows.length === 0) {
-              try {
-                const { syncProjectsFromFirebase, syncKeywordsAndRankingsFromFirebase } = await import("@/lib/firebase-tracking");
-                const synced = await syncProjectsFromFirebase();
-                if (synced > 0) {
-                  await syncKeywordsAndRankingsFromFirebase();
-                }
-              } catch (fbErr) {
-                console.error("⚠️ [DB] Firebase bootstrap sync error:", fbErr);
-              }
-
-              const checkProjAgain = await originalExecute("SELECT id FROM projects LIMIT 1");
-              if (checkProjAgain.rows.length === 0) {
-                await originalExecute(
-                  "INSERT OR IGNORE INTO projects (id, client_id, name, domain, target_country, target_device) VALUES (20, 12, 'Vazautosolutions', 'https://vazautosolutions.com', 'US', 'desktop')"
-                );
-              } else {
-                defaultProjId = Number(checkProjAgain.rows[0].id) || 20;
-              }
-            } else {
-              defaultProjId = Number(checkProj.rows[0].id) || 20;
-            }
-
-            const checkKw = await originalExecute("SELECT 1 FROM keywords LIMIT 1");
-            if (checkKw.rows.length === 0) {
-              await originalExecute(
-                `INSERT OR IGNORE INTO keywords (id, project_id, keyword, country) VALUES (1, ${defaultProjId}, 'vaz autosolutions', 'US')`
-              );
-            }
+            await originalExecute(
+              "INSERT OR IGNORE INTO projects (id, client_id, name, domain, target_country, target_device) VALUES (20, 12, 'Vazautosolutions', 'https://vazautosolutions.com', 'US', 'desktop')"
+            );
+            await originalExecute(
+              "INSERT OR IGNORE INTO keywords (id, project_id, keyword, country) VALUES (1, 20, 'vaz autosolutions', 'US')"
+            );
           } catch (seedErr) {
             console.error("⚠️ [DB] Seed data error:", seedErr);
           }
