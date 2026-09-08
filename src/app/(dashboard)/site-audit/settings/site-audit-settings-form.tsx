@@ -85,34 +85,39 @@ export function SiteAuditSettingsForm({
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     startTransition(async () => {
-      const result = await saveSiteAuditSettingsAndRunAction({
-        slugOrId: initialSlug,
-        domain,
-        scopeMode,
-        startUrl,
-        respectRobots,
-        pageLimit,
-        crawlSource,
-        sitemapUrl,
-        userAgent,
-        crawlDelay,
-        disallowRules,
-        allowRules,
-        ignoreParams,
-        paramsList,
-        useAuth,
-        authUser,
-        authPass,
-        schedule,
-      });
+      try {
+        const result = await saveSiteAuditSettingsAndRunAction({
+          slugOrId: initialSlug,
+          domain,
+          scopeMode,
+          startUrl,
+          respectRobots,
+          pageLimit,
+          crawlSource,
+          sitemapUrl,
+          userAgent,
+          crawlDelay,
+          disallowRules,
+          allowRules,
+          ignoreParams,
+          paramsList,
+          useAuth,
+          authUser,
+          authPass,
+          schedule,
+        });
 
-      if (!result.success) {
-        toast.error(result.error || "Failed to save settings and run audit.");
-        return;
+        if (!result.success) {
+          toast.error(result.error || "Failed to save settings and run audit.");
+          return;
+        }
+
+        toast.success("Site Audit settings saved and crawl started!");
+        router.push(`/${result.slug || initialSlug}/audit`);
+      } catch (err: any) {
+        console.error("❌ [SiteAuditSettings] Network error while saving settings:", err);
+        toast.error(err?.message || "A network error occurred while communicating with the server. Please try again.");
       }
-
-      toast.success("Site Audit settings saved and crawl started!");
-      router.push(`/${result.slug || initialSlug}/audit`);
     });
   };
 

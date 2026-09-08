@@ -23,6 +23,25 @@ import {
  *   seo_rankings/{projectId}_{keywordId}_{date}_{device}_{country}  — ranking result
  */
 
+// ─── Timeout Protection ───────────────────────────────────────────────────
+
+/**
+ * Helper to ensure Firebase operations never hang or exceed serverless timeout limits.
+ */
+function withTimeout<T>(promise: Promise<T>, timeoutMs = 3500, fallback: T): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), timeoutMs);
+  });
+  return Promise.race([
+    promise.then((res) => {
+      clearTimeout(timer);
+      return res;
+    }),
+    timeoutPromise,
+  ]);
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────
 
 export type FirebaseProject = {
@@ -111,7 +130,15 @@ export async function syncProjectToFirebase(project: {
 /** Get all projects from Firestore. */
 export async function getFirebaseProjects(): Promise<FirebaseProject[]> {
   try {
-    const snapshot = await getDocs(collection(firestore, PROJECTS_COL));
+    const snapshot = await withTimeout(
+      getDocs(collection(firestore, PROJECTS_COL)),
+      3000,
+      null
+    );
+    if (!snapshot) {
+      console.warn("⚠️ [Firebase] getFirebaseProjects timed out after 3s");
+      return [];
+    }
     return snapshot.docs.map((d) => d.data() as FirebaseProject);
   } catch (error) {
     console.error("❌ [Firebase] Failed to get projects:", error);
@@ -123,7 +150,11 @@ export async function getFirebaseProjects(): Promise<FirebaseProject[]> {
 export async function getFirebaseProject(projectId: number): Promise<FirebaseProject | null> {
   try {
     const docRef = doc(firestore, PROJECTS_COL, String(projectId));
-    const snap = await getDoc(docRef);
+    const snap = await withTimeout(getDoc(docRef), 3000, null);
+    if (!snap) {
+      console.warn(`⚠️ [Firebase] getFirebaseProject timed out for ID ${projectId}`);
+      return null;
+    }
     return snap.exists() ? (snap.data() as FirebaseProject) : null;
   } catch (error) {
     console.error("❌ [Firebase] Failed to get project:", error);
@@ -219,7 +250,11 @@ export async function getFirebaseKeywords(projectId: number): Promise<FirebaseKe
       collection(firestore, KEYWORDS_COL),
       where("projectId", "==", projectId),
     );
-    const snapshot = await getDocs(q);
+    const snapshot = await withTimeout(getDocs(q), 3000, null);
+    if (!snapshot) {
+      console.warn(`⚠️ [Firebase] getFirebaseKeywords timed out for project ${projectId}`);
+      return [];
+    }
     return snapshot.docs.map((d) => d.data() as FirebaseKeyword);
   } catch (error) {
     console.error("❌ [Firebase] Failed to get keywords:", error);
@@ -272,7 +307,11 @@ export async function getFirebaseRankings(projectId: number): Promise<FirebaseRa
       collection(firestore, RANKINGS_COL),
       where("projectId", "==", projectId),
     );
-    const snapshot = await getDocs(q);
+    const snapshot = await withTimeout(getDocs(q), 3000, null);
+    if (!snapshot) {
+      console.warn(`⚠️ [Firebase] getFirebaseRankings timed out for project ${projectId}`);
+      return [];
+    }
     return snapshot.docs.map((d) => d.data() as FirebaseRanking);
   } catch (error) {
     console.error("❌ [Firebase] Failed to get rankings:", error);
@@ -291,7 +330,11 @@ export async function getFirebaseKeywordRankings(
       where("projectId", "==", projectId),
       where("keywordId", "==", keywordId),
     );
-    const snapshot = await getDocs(q);
+    const snapshot = await withTimeout(getDocs(q), 3000, null);
+    if (!snapshot) {
+      console.warn(`⚠️ [Firebase] getFirebaseKeywordRankings timed out`);
+      return [];
+    }
     return snapshot.docs.map((d) => d.data() as FirebaseRanking);
   } catch (error) {
     console.error("❌ [Firebase] Failed to get keyword rankings:", error);
@@ -344,7 +387,11 @@ export async function getFirebaseCompetitors(
           where("projectId", "==", projectId),
         )
       : collection(firestore, COMPETITORS_COL);
-    const snapshot = await getDocs(q);
+    const snapshot = await withTimeout(getDocs(q), 3000, null);
+    if (!snapshot) {
+      console.warn(`⚠️ [Firebase] getFirebaseCompetitors timed out`);
+      return [];
+    }
     return snapshot.docs.map((d) => d.data() as FirebaseCompetitor);
   } catch (error) {
     console.error("❌ [Firebase] Failed to get competitors:", error);
@@ -759,21 +806,33 @@ export async function syncCrawlPageToFirebase(page: {
  * Complete pull from Firebase into local DB: projects, keywords, rankings, and competitors.
  */
 export async function syncFromFirebase(projectId?: number) {
-  await syncProjectsFromFirebase();
-  if (projectId) {
-    await syncKeywordsAndRankingsFromFirebase(projectId);
-    await syncCompetitorsFromFirebase(projectId);
-  } else {
-    // Only sync keywords, rankings & competitors for existing projects to prevent orphan foreign-key failures
-    const { db } = await import("@/db");
-    const { projects: projectsTable } = await import("@/db/schema");
-    const localProjects = await db
-      .select({ id: projectsTable.id })
-      .from(projectsTable);
-    for (const p of localProjects) {
-      await syncKeywordsAndRankingsFromFirebase(p.id);
-      await syncCompetitorsFromFirebase(p.id);
-    }
+  try {
+    await withTimeout(
+      (async () => {
+        await syncProjectsFromFirebase();
+        if (projectId) {
+          await syncKeywordsAndRankingsFromFirebase(projectId);
+          await syncCompetitorsFromFirebase(projectId);
+        } else {
+          // Only sync keywords, rankings & competitors for existing projects
+          const { db } = await import("@/db");
+          const { projects: projectsTable } = await import("@/db/schema");
+          const localProjects = await db
+            .select({ id: projectsTable.id })
+            .from(projectsTable);
+          await Promise.all(
+            localProjects.map(async (p) => {
+              await syncKeywordsAndRankingsFromFirebase(p.id);
+              await syncCompetitorsFromFirebase(p.id);
+            })
+          );
+        }
+      })(),
+      4000,
+      undefined
+    );
+  } catch (err) {
+    console.error("⚠️ [Firebase] syncFromFirebase error:", err);
   }
 }
 

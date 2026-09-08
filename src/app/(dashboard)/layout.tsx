@@ -15,6 +15,27 @@ export const dynamic = "force-dynamic";
  */
 async function getNavProjects(): Promise<SidebarProject[]> {
   try {
+    // 1. Fast path: Read directly from local database (instant, sub-millisecond)
+    const dbProjects = await db
+      .select({
+        id: projects.id,
+        name: projects.name,
+        domain: projects.domain,
+        targetCountry: projects.targetCountry,
+      })
+      .from(projects)
+      .orderBy(desc(projects.id));
+
+    if (dbProjects.length > 0) {
+      return dbProjects.map((p) => ({
+        id: p.id,
+        name: p.name,
+        domain: p.domain,
+        targetCountry: p.targetCountry || "US",
+      }));
+    }
+
+    // 2. Fallback to Firebase only if local DB is completely empty
     const { getFirebaseProjects, syncProjectsFromFirebase } = await import(
       "@/lib/firebase-tracking"
     );
@@ -32,23 +53,7 @@ async function getNavProjects(): Promise<SidebarProject[]> {
       }));
     }
 
-    // Fallback to SQLite if Firestore is empty or offline
-    const dbProjects = await db
-      .select({
-        id: projects.id,
-        name: projects.name,
-        domain: projects.domain,
-        targetCountry: projects.targetCountry,
-      })
-      .from(projects)
-      .orderBy(desc(projects.id));
-
-    return dbProjects.map((p) => ({
-      id: p.id,
-      name: p.name,
-      domain: p.domain,
-      targetCountry: p.targetCountry || "US",
-    }));
+    return [];
   } catch (error) {
     console.error("❌ [Layout] Error fetching nav projects:", error);
     return [];

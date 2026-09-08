@@ -65,10 +65,15 @@ function createDbClient(): Client {
                 // statement might already exist
               }
             }
-            try {
-              await originalExecute(
-                "INSERT OR IGNORE INTO clients (id, name, status) VALUES (12, 'Primary Organization', 'active')"
-              );
+          }
+
+          try {
+            await originalExecute(
+              "INSERT OR IGNORE INTO clients (id, name, status) VALUES (12, 'Primary Organization', 'active')"
+            );
+            const checkProj = await originalExecute("SELECT id FROM projects LIMIT 1");
+            let defaultProjId = 20;
+            if (checkProj.rows.length === 0) {
               try {
                 const { syncProjectsFromFirebase, syncKeywordsAndRankingsFromFirebase } = await import("@/lib/firebase-tracking");
                 const synced = await syncProjectsFromFirebase();
@@ -79,20 +84,28 @@ function createDbClient(): Client {
                 console.error("⚠️ [DB] Firebase bootstrap sync error:", fbErr);
               }
 
-              const checkProj = await originalExecute("SELECT 1 FROM projects LIMIT 1");
-              if (checkProj.rows.length === 0) {
+              const checkProjAgain = await originalExecute("SELECT id FROM projects LIMIT 1");
+              if (checkProjAgain.rows.length === 0) {
                 await originalExecute(
-                  "INSERT OR IGNORE INTO projects (id, client_id, name, domain, target_country, target_device) VALUES (19, 12, 'Vazautosolutions', 'https://vazautosolutions.com', 'US', 'desktop')"
+                  "INSERT OR IGNORE INTO projects (id, client_id, name, domain, target_country, target_device) VALUES (20, 12, 'Vazautosolutions', 'https://vazautosolutions.com', 'US', 'desktop')"
                 );
-                await originalExecute(
-                  "INSERT OR IGNORE INTO keywords (id, project_id, keyword, country) VALUES (1, 19, 'vaz autosolutions', 'US')"
-                );
+              } else {
+                defaultProjId = Number(checkProjAgain.rows[0].id) || 20;
               }
-            } catch (seedErr) {
-              console.error("⚠️ [DB] Seed data error:", seedErr);
+            } else {
+              defaultProjId = Number(checkProj.rows[0].id) || 20;
             }
-            console.log("✅ [DB] Database schema and projects initialized!");
+
+            const checkKw = await originalExecute("SELECT 1 FROM keywords LIMIT 1");
+            if (checkKw.rows.length === 0) {
+              await originalExecute(
+                `INSERT OR IGNORE INTO keywords (id, project_id, keyword, country) VALUES (1, ${defaultProjId}, 'vaz autosolutions', 'US')`
+              );
+            }
+          } catch (seedErr) {
+            console.error("⚠️ [DB] Seed data error:", seedErr);
           }
+
           schemaInitialized = true;
         } catch (err) {
           console.error("❌ [DB] Schema initialization error:", err);

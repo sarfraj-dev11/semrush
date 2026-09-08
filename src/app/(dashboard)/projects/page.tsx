@@ -25,28 +25,46 @@ import { deleteProjectAction } from "./actions";
 import { ProjectFormDialog } from "./project-form";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export default async function ProjectsPage() {
-  await syncProjectsFromFirebase().catch((err) => {
-    console.error("⚠️ [ProjectsPage] Failed to sync Firestore projects:", err);
-  });
+  let projectRows = await db
+    .select({
+      id: projects.id,
+      name: projects.name,
+      domain: projects.domain,
+      targetCountry: projects.targetCountry,
+      targetDevice: projects.targetDevice,
+      crawlLimit: projects.crawlLimit,
+      clientId: clients.id,
+      clientName: clients.name,
+    })
+    .from(projects)
+    .leftJoin(clients, eq(projects.clientId, clients.id))
+    .orderBy(asc(projects.name));
 
-  const [projectRows, clientOptions, allCrawls, allKeywords, allBacklinks, fbProjects] =
+  if (projectRows.length === 0) {
+    await syncProjectsFromFirebase().catch((err) => {
+      console.error("⚠️ [ProjectsPage] Failed to sync Firestore projects:", err);
+    });
+    projectRows = await db
+      .select({
+        id: projects.id,
+        name: projects.name,
+        domain: projects.domain,
+        targetCountry: projects.targetCountry,
+        targetDevice: projects.targetDevice,
+        crawlLimit: projects.crawlLimit,
+        clientId: clients.id,
+        clientName: clients.name,
+      })
+      .from(projects)
+      .leftJoin(clients, eq(projects.clientId, clients.id))
+      .orderBy(asc(projects.name));
+  }
+
+  const [clientOptions, allCrawls, allKeywords, allBacklinks, fbProjects] =
     await Promise.all([
-      db
-        .select({
-          id: projects.id,
-          name: projects.name,
-          domain: projects.domain,
-          targetCountry: projects.targetCountry,
-          targetDevice: projects.targetDevice,
-          crawlLimit: projects.crawlLimit,
-          clientId: clients.id,
-          clientName: clients.name,
-        })
-        .from(projects)
-        .leftJoin(clients, eq(projects.clientId, clients.id))
-        .orderBy(asc(projects.name)),
       db
         .select({ id: clients.id, name: clients.name })
         .from(clients)

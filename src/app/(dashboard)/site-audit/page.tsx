@@ -11,6 +11,7 @@ import { syncProjectsFromFirebase } from "@/lib/firebase-tracking";
 import { deleteProjectAction } from "../projects/actions";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 /** A measured value plus its movement since the previous completed crawl. */
 type Metric = {
@@ -93,12 +94,17 @@ export default async function SiteAuditDirectoryPage({
   const query = searchParams ? await searchParams : {};
   const q = typeof query.q === "string" ? query.q.trim().toLowerCase() : "";
 
-  await syncProjectsFromFirebase();
+  let rawProjects = await db.select().from(projects).orderBy(projects.name);
+  if (rawProjects.length === 0) {
+    try {
+      await syncProjectsFromFirebase();
+      rawProjects = await db.select().from(projects).orderBy(projects.name);
+    } catch (err) {
+      console.error("⚠️ [SiteAudit] Failed to sync projects from Firebase:", err);
+    }
+  }
 
-  const [rawProjects, allCrawls] = await Promise.all([
-    db.select().from(projects).orderBy(projects.name),
-    db.select().from(crawls).orderBy(desc(crawls.finishedAt)),
-  ]);
+  const allCrawls = await db.select().from(crawls).orderBy(desc(crawls.finishedAt));
 
   const allProjects = q
     ? rawProjects.filter(

@@ -13,6 +13,7 @@ import { syncFromFirebase } from "@/lib/firebase-tracking";
 import { formatDate, hostnameOf } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const countryName = new Map(ALL_COUNTRIES.map((c) => [c.code, c.name]));
 
@@ -77,15 +78,21 @@ export default async function PositionTrackingDirectoryPage({
   const { q = "", device: deviceFilter } = await searchParams;
   const filter = q.trim().toLowerCase();
 
-  // Sync projects and latest rankings from Firebase
-  await syncFromFirebase().catch((err) => {
-    console.error("⚠️ [PositionTracking] Failed to sync from Firebase:", err);
-  });
-
-  const [allProjects, provider] = await Promise.all([
+  let [allProjects, provider] = await Promise.all([
     db.select().from(projects).orderBy(projects.name),
     getSearchProvider(),
   ]);
+
+  // If local DB is empty, sync from Firebase
+  if (allProjects.length === 0) {
+    try {
+      const { syncFromFirebase } = await import("@/lib/firebase-tracking");
+      await syncFromFirebase();
+      allProjects = await db.select().from(projects).orderBy(projects.name);
+    } catch (err) {
+      console.error("⚠️ [PositionTracking] Failed to sync from Firebase:", err);
+    }
+  }
 
   const visible = allProjects.filter((p) => {
     const matchesFilter = filter

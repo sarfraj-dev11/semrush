@@ -9,7 +9,8 @@ import { toProjectSlug } from "@/lib/slug-utils";
 
 export async function runRankCheckAction(projectId: number) {
   if (!Number.isInteger(projectId) || projectId <= 0) {
-    throw new Error("Invalid project ID.");
+    console.error("⚠️ [RankCheck] Invalid project ID provided:", projectId);
+    return { success: false, message: "Invalid project ID." };
   }
 
   const [project] = await db
@@ -19,7 +20,8 @@ export async function runRankCheckAction(projectId: number) {
     .limit(1);
 
   if (!project) {
-    throw new Error(`Project ${projectId} not found.`);
+    console.error(`⚠️ [RankCheck] Project ${projectId} not found in database.`);
+    return { success: false, message: `Project ${projectId} not found.` };
   }
 
   const projectKeywords = await db

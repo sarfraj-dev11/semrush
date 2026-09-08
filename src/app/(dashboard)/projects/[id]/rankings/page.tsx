@@ -35,6 +35,7 @@ import {
 } from "./ranking-charts";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 function getCtrByPosition(pos: number | null): number {
   if (pos === null || pos <= 0 || pos > 100) return 0;
@@ -59,8 +60,20 @@ export default async function RankingsPage({
   const record = await getProjectWithClient(projectId);
   if (!record) notFound();
 
-  // Sync latest keywords and rankings from Firebase
-  await syncKeywordsAndRankingsFromFirebase(projectId);
+  // Sync latest keywords and rankings from Firebase only if local project has no keywords yet
+  const localKwCheck = await db
+    .select({ id: keywords.id })
+    .from(keywords)
+    .where(eq(keywords.projectId, projectId))
+    .limit(1);
+
+  if (localKwCheck.length === 0) {
+    try {
+      await syncKeywordsAndRankingsFromFirebase(projectId);
+    } catch (err) {
+      console.error("⚠️ [Rankings] Failed to sync keywords from Firebase:", err);
+    }
+  }
 
   const query = await searchParams;
   const q = typeof query.q === "string" ? query.q.trim() : "";

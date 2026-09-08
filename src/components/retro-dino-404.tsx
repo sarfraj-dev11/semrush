@@ -397,9 +397,8 @@ export function RetroDino404() {
 
         {/* The Animated Dinosaur: Firmly Grounded, Legs Running, Jumps Up On Action */}
         <div
-          className={`absolute pointer-events-none z-30 transition-transform ${
-            isJumping ? "animate-dino-leap" : ""
-          }`}
+          className={`absolute pointer-events-none z-30 transition-transform ${isJumping ? "animate-dino-leap" : ""
+            }`}
           style={{
             left: "40.125%",
             top: "35.833%",
