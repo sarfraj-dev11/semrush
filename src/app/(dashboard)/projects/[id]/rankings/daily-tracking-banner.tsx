@@ -98,16 +98,21 @@ export function DailyTrackingBanner({
         </div>
 
         <div className="flex items-center gap-2">
+          <div className="hidden sm:flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] font-medium text-emerald-500">
+            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Auto-synced</span>
+          </div>
+
           <Button
             variant="secondary"
             size="sm"
             onClick={handleSyncFirebase}
             disabled={syncing || loading}
             className="h-9 gap-1.5 px-3 font-medium text-[12px] shadow-xs"
-            title="Fetch latest rankings and keywords from Firebase"
+            title="Refresh latest rankings and keywords from Firebase"
           >
             <RefreshCw className={`size-3.5 ${syncing ? "animate-spin" : ""}`} />
-            <span>{syncing ? "Syncing…" : "Fetch from Firebase"}</span>
+            <span>{syncing ? "Syncing…" : "Refresh"}</span>
           </Button>
 
           <Button

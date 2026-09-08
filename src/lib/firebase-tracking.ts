@@ -532,8 +532,24 @@ export async function syncProjectsFromFirebase(): Promise<number> {
 /**
  * Fetch keywords and rankings from Firebase and sync them into the local SQLite database.
  */
-export async function syncKeywordsAndRankingsFromFirebase(projectId?: number) {
+const lastSyncMap = new Map<number, number>();
+
+/**
+ * Fetch keywords and rankings from Firebase and sync them into the local SQLite database.
+ * Uses batch pre-fetching and O(1) in-memory maps for sub-second execution.
+ */
+export async function syncKeywordsAndRankingsFromFirebase(projectId?: number, force = false) {
   try {
+    if (projectId && !force) {
+      const last = lastSyncMap.get(projectId);
+      const now = Date.now();
+      if (last && now - last < 10000) {
+        // Synced within the last 10 seconds, skip redundant network roundtrip
+        return;
+      }
+      lastSyncMap.set(projectId, now);
+    }
+
     const { db } = await import("@/db");
     const {
       keywords: keywordsTable,
@@ -542,156 +558,192 @@ export async function syncKeywordsAndRankingsFromFirebase(projectId?: number) {
     } = await import("@/db/schema");
     const { and, eq } = await import("drizzle-orm");
 
-    // 1. Sync keywords
-    const fbKeywords = projectId
-      ? await getFirebaseKeywords(projectId)
-      : (await getDocs(collection(firestore, KEYWORDS_COL))).docs.map(
-          (d) => d.data() as FirebaseKeyword,
-        );
-
-    for (const kw of fbKeywords) {
-      // Ensure the project exists in local SQLite before attempting to insert keywords
-      const [projExists] = await db
-        .select({ id: projectsTable.id })
-        .from(projectsTable)
-        .where(eq(projectsTable.id, kw.projectId))
-        .limit(1);
-
-      if (!projExists) {
-        continue;
-      }
-
-      const [existing] = await db
-        .select({ id: keywordsTable.id })
-        .from(keywordsTable)
-        .where(
-          and(
-            eq(keywordsTable.projectId, kw.projectId),
-            eq(keywordsTable.keyword, kw.keyword),
+    // 1. Fetch keywords and rankings from Firebase in parallel with timeout
+    const [fbKeywords, fbRankings] = await Promise.all([
+      projectId
+        ? getFirebaseKeywords(projectId)
+        : withTimeout(getDocs(collection(firestore, KEYWORDS_COL)), 3000, null).then(
+            (s) => (s ? s.docs.map((d) => d.data() as FirebaseKeyword) : []),
           ),
-        )
-        .limit(1);
+      projectId
+        ? getFirebaseRankings(projectId)
+        : withTimeout(getDocs(collection(firestore, RANKINGS_COL)), 3000, null).then(
+            (s) => (s ? s.docs.map((d) => d.data() as FirebaseRanking) : []),
+          ),
+    ]);
+
+    if ((!fbKeywords || fbKeywords.length === 0) && (!fbRankings || fbRankings.length === 0)) {
+      return;
+    }
+
+    // Ensure projects exist in SQLite
+    const localProjects = await db.select({ id: projectsTable.id }).from(projectsTable);
+    const localProjIds = new Set(localProjects.map((p) => p.id));
+
+    // Pre-fetch local keywords for fast matching
+    const localKeywords = projectId
+      ? await db.select().from(keywordsTable).where(eq(keywordsTable.projectId, projectId))
+      : await db.select().from(keywordsTable);
+
+    const localKwById = new Map<number, (typeof localKeywords)[0]>();
+    const localKwByText = new Map<string, (typeof localKeywords)[0]>();
+    for (const kw of localKeywords) {
+      localKwById.set(kw.id, kw);
+      localKwByText.set(`${kw.projectId}_${kw.keyword.toLowerCase().trim()}`, kw);
+    }
+
+    // Sync Keywords into SQLite
+    for (const kw of fbKeywords || []) {
+      if (!localProjIds.has(kw.projectId)) continue;
+
+      const textKey = `${kw.projectId}_${kw.keyword.toLowerCase().trim()}`;
+      const existing = localKwByText.get(textKey) || localKwById.get(kw.id);
 
       if (!existing) {
         try {
-          await db.insert(keywordsTable).values({
-            id: kw.id,
-            projectId: kw.projectId,
-            keyword: kw.keyword,
-            searchVolume: kw.searchVolume ?? null,
-            difficulty: kw.difficulty ?? null,
-            cpc: kw.cpc ?? null,
-            intent: kw.intent ?? null,
-            targetUrl: kw.targetUrl ?? null,
-            tags: kw.tags ?? null,
-            country: kw.country || "US",
-            createdAt: kw.createdAt ? new Date(kw.createdAt) : new Date(),
-          });
-          console.log(`📥 [Firebase] Synced keyword into local DB: "${kw.keyword}"`);
-        } catch (insertErr) {
-          console.warn(`⚠️ [Firebase] Could not insert keyword "${kw.keyword}":`, insertErr);
+          const [inserted] = await db
+            .insert(keywordsTable)
+            .values({
+              id: kw.id,
+              projectId: kw.projectId,
+              keyword: kw.keyword,
+              searchVolume: kw.searchVolume ?? null,
+              difficulty: kw.difficulty ?? null,
+              cpc: kw.cpc ?? null,
+              intent: kw.intent ?? null,
+              targetUrl: kw.targetUrl ?? null,
+              tags: kw.tags ?? null,
+              country: kw.country || "US",
+              createdAt: kw.createdAt ? new Date(kw.createdAt) : new Date(),
+            })
+            .returning();
+
+          if (inserted) {
+            localKwById.set(inserted.id, inserted);
+            localKwByText.set(textKey, inserted);
+          }
+        } catch {
+          // Retry without forcing ID if primary key conflict
+          try {
+            const [inserted] = await db
+              .insert(keywordsTable)
+              .values({
+                projectId: kw.projectId,
+                keyword: kw.keyword,
+                searchVolume: kw.searchVolume ?? null,
+                difficulty: kw.difficulty ?? null,
+                cpc: kw.cpc ?? null,
+                intent: kw.intent ?? null,
+                targetUrl: kw.targetUrl ?? null,
+                tags: kw.tags ?? null,
+                country: kw.country || "US",
+                createdAt: kw.createdAt ? new Date(kw.createdAt) : new Date(),
+              })
+              .returning();
+
+            if (inserted) {
+              localKwById.set(inserted.id, inserted);
+              localKwByText.set(textKey, inserted);
+            }
+          } catch (retryErr) {
+            console.warn(`⚠️ [Firebase] Could not insert keyword "${kw.keyword}":`, retryErr);
+          }
         }
       }
     }
 
-    // 2. Sync rankings
-    const fbRankings = projectId
-      ? await getFirebaseRankings(projectId)
-      : (await getDocs(collection(firestore, RANKINGS_COL))).docs.map(
-          (d) => d.data() as FirebaseRanking,
-        );
+    // Pre-fetch local rankings for fast matching
+    const localRankings = projectId
+      ? await db
+          .select({
+            id: rankingsTable.id,
+            keywordId: rankingsTable.keywordId,
+            date: rankingsTable.date,
+            device: rankingsTable.device,
+            country: rankingsTable.country,
+            position: rankingsTable.position,
+            url: rankingsTable.url,
+          })
+          .from(rankingsTable)
+          .innerJoin(keywordsTable, eq(rankingsTable.keywordId, keywordsTable.id))
+          .where(eq(keywordsTable.projectId, projectId))
+      : await db
+          .select({
+            id: rankingsTable.id,
+            keywordId: rankingsTable.keywordId,
+            date: rankingsTable.date,
+            device: rankingsTable.device,
+            country: rankingsTable.country,
+            position: rankingsTable.position,
+            url: rankingsTable.url,
+          })
+          .from(rankingsTable);
 
-    for (const rk of fbRankings) {
-      const checkDateStr = rk.date; // YYYY-MM-DD
+    const rankKey = (
+      kId: number,
+      d: string,
+      dev: string | null | undefined,
+      c: string | null | undefined,
+    ) => `${kId}_${d}_${dev || "desktop"}_${c || "US"}`;
+    const localRankMap = new Map<string, (typeof localRankings)[0]>();
+    for (const r of localRankings) {
+      localRankMap.set(rankKey(r.keywordId, r.date, r.device, r.country), r);
+    }
+
+    // Sync Rankings into SQLite
+    for (const rk of fbRankings || []) {
+      const checkDateStr = rk.date;
       const dev = (rk.device || "desktop") as "mobile" | "desktop";
       const ctry = rk.country || "US";
 
-      // Verify that the keyword exists in local SQLite to satisfy the foreign key constraint
-      let targetKeywordId = rk.keywordId;
-      const [kwById] = await db
-        .select({ id: keywordsTable.id })
-        .from(keywordsTable)
-        .where(eq(keywordsTable.id, targetKeywordId))
-        .limit(1);
-
-      if (!kwById) {
-        // Keyword with this ID doesn't exist. Check if we can find it by project & keyword text
-        if (rk.projectId && rk.keyword) {
-          const [kwByName] = await db
-            .select({ id: keywordsTable.id })
-            .from(keywordsTable)
-            .where(
-              and(
-                eq(keywordsTable.projectId, rk.projectId),
-                eq(keywordsTable.keyword, rk.keyword),
-              ),
-            )
-            .limit(1);
-
-          if (kwByName) {
-            targetKeywordId = kwByName.id;
-          } else {
-            // Keyword does not exist in local DB. Check if project exists so we can auto-create the keyword
-            const [projExists] = await db
-              .select({ id: projectsTable.id })
-              .from(projectsTable)
-              .where(eq(projectsTable.id, rk.projectId))
-              .limit(1);
-
-            if (projExists) {
-              try {
-                const [newKw] = await db
-                  .insert(keywordsTable)
-                  .values({
-                    id: rk.keywordId,
-                    projectId: rk.projectId,
-                    keyword: rk.keyword,
-                    country: ctry,
-                  })
-                  .returning({ id: keywordsTable.id });
-                targetKeywordId = newKw.id;
-              } catch {
-                continue;
-              }
-            } else {
-              // Project doesn't exist locally; this is an orphaned ranking from an old/deleted project
-              continue;
-            }
-          }
-        } else {
-          // Orphaned ranking without keyword record
-          continue;
-        }
+      let targetKeyword = localKwById.get(rk.keywordId);
+      if (!targetKeyword && rk.projectId && rk.keyword) {
+        targetKeyword = localKwByText.get(`${rk.projectId}_${rk.keyword.toLowerCase().trim()}`);
       }
 
-      const existing = await db
-        .select({ id: rankingsTable.id })
-        .from(rankingsTable)
-        .where(
-          and(
-            eq(rankingsTable.keywordId, targetKeywordId),
-            eq(rankingsTable.date, checkDateStr),
-            eq(rankingsTable.device, dev),
-            eq(rankingsTable.country, ctry),
-          ),
-        )
-        .limit(1);
+      if (!targetKeyword) continue;
 
-      if (existing.length === 0) {
+      const rKey = rankKey(targetKeyword.id, checkDateStr, dev, ctry);
+      const existingRank = localRankMap.get(rKey);
+
+      if (!existingRank) {
         try {
-          await db.insert(rankingsTable).values({
-            keywordId: targetKeywordId,
-            date: checkDateStr,
-            position: rk.position,
-            url: rk.url,
-            source: rk.source || "serper",
-            device: dev,
-            country: ctry,
-          });
+          const [inserted] = await db
+            .insert(rankingsTable)
+            .values({
+              keywordId: targetKeyword.id,
+              date: checkDateStr,
+              position: rk.position,
+              url: rk.url,
+              source: rk.source || "serper",
+              device: dev,
+              country: ctry,
+            })
+            .returning();
+
+          if (inserted) {
+            localRankMap.set(rKey, inserted);
+          }
         } catch (insertErr) {
           console.warn(
-            `⚠️ [Firebase] Could not insert ranking row for keyword ${targetKeywordId}:`,
+            `⚠️ [Firebase] Could not insert ranking row for keyword ${targetKeyword.id}:`,
             insertErr,
+          );
+        }
+      } else if (rk.position !== null && existingRank.position !== rk.position) {
+        try {
+          await db
+            .update(rankingsTable)
+            .set({
+              position: rk.position,
+              url: rk.url ?? existingRank.url,
+              source: rk.source || "serper",
+            })
+            .where(eq(rankingsTable.id, existingRank.id));
+        } catch (updateErr) {
+          console.warn(
+            `⚠️ [Firebase] Could not update ranking for keyword ${targetKeyword.id}:`,
+            updateErr,
           );
         }
       }

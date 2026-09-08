@@ -92,19 +92,11 @@ export default async function ProjectRankingsPage({
   const projectId = project.id;
   const slug = toProjectSlug(project.name);
 
-  // Sync latest keywords and rankings from Firebase only if local project has no keywords yet
-  const localKwCheck = await db
-    .select({ id: keywords.id })
-    .from(keywords)
-    .where(eq(keywords.projectId, projectId))
-    .limit(1);
-
-  if (localKwCheck.length === 0) {
-    try {
-      await syncKeywordsAndRankingsFromFirebase(projectId);
-    } catch (err) {
-      console.error("⚠️ [ProjectRankingsPage] Failed to sync from Firebase:", err);
-    }
+  // Automatically sync latest keywords and rankings from Firebase
+  try {
+    await syncKeywordsAndRankingsFromFirebase(projectId);
+  } catch (err) {
+    console.error("⚠️ [ProjectRankingsPage] Failed to auto-sync from Firebase:", err);
   }
 
   const query = await searchParams;
@@ -163,43 +155,9 @@ export default async function ProjectRankingsPage({
     );
   }
 
-  if (allRankings.length === 0) {
-    return (
-      <div className="space-y-6">
-        <DailyTrackingBanner
-          projectId={projectId}
-          projectName={project.name}
-          lastChecked={null}
-          totalKeywords={projectKeywords.length}
-        />
-        <Empty
-          icon={TrendingUp}
-          title="Rankings Not Checked Yet"
-          description={`You have ${projectKeywords.length} tracked keywords ready. Click "Check Rankings Now" above to check their positions on Google's Top 10 Pages immediately, or wait for the automated daily check at 6:00 PM IST.`}
-          action={
-            <div className="flex items-center gap-2">
-              <Button variant="primary" asChild>
-                <Link href="/imports">Import Rankings CSV</Link>
-              </Button>
-              <KeywordDialog
-                projectId={projectId}
-                trigger={
-                  <Button variant="secondary">
-                    <Plus className="size-4" />
-                    Add More Keywords
-                  </Button>
-                }
-              />
-            </div>
-          }
-        />
-      </div>
-    );
-  }
-
   // Find distinct dates sorted chronologically
   const dates = Array.from(new Set(allRankings.map((r) => r.date))).sort();
-  const latestDate = dates[dates.length - 1];
+  const latestDate = dates.length > 0 ? dates[dates.length - 1] : null;
   const previousDate = dates.length > 1 ? dates[dates.length - 2] : null;
 
   // Group rankings by date for time-series chart

@@ -205,6 +205,32 @@ export async function executeImportAction(
             source: "import",
           });
         }
+
+        // Sync keyword & ranking to Firebase
+        try {
+          const { saveRankingToFirebase, syncKeywordToFirebase } = await import(
+            "@/lib/firebase-tracking"
+          );
+          await syncKeywordToFirebase({
+            id: kwRecord.id,
+            projectId,
+            keyword: kwName,
+          });
+          await saveRankingToFirebase({
+            keywordId: kwRecord.id,
+            projectId,
+            keyword: kwName,
+            date,
+            position: pos,
+            url: rankingUrl,
+            device: "desktop",
+            country: "US",
+            source: "import",
+          });
+        } catch (fbErr) {
+          console.error("❌ Failed to sync imported ranking to Firebase:", fbErr);
+        }
+
         importedCount++;
       }
     } else if (sourceType === "backlinks") {
@@ -317,6 +343,30 @@ export async function executeImportAction(
     revalidatePath(`/projects/${projectId}/rankings`);
     revalidatePath(`/projects/${projectId}/backlinks`);
     revalidatePath(`/projects/${projectId}/competitors`);
+    revalidatePath(`/projects/${projectId}`);
+    revalidatePath("/position-tracking");
+    revalidatePath("/projects");
+
+    try {
+      const { projects: projectsTable } = await import("@/db/schema");
+      const { toProjectSlug } = await import("@/lib/slug-utils");
+      const [proj] = await db
+        .select({ name: projectsTable.name })
+        .from(projectsTable)
+        .where(eq(projectsTable.id, projectId))
+        .limit(1);
+
+      if (proj?.name) {
+        const slug = toProjectSlug(proj.name);
+        revalidatePath(`/${slug}/keywords`);
+        revalidatePath(`/${slug}/rankings`);
+        revalidatePath(`/${slug}/backlinks`);
+        revalidatePath(`/${slug}/competitors`);
+        revalidatePath(`/${slug}`);
+      }
+    } catch {
+      // Non-critical revalidation fallback
+    }
 
     return { success: true, imported: importedCount, skipped: skippedCount };
   } catch (err) {

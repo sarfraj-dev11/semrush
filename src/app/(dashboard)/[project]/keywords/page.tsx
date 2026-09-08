@@ -106,6 +106,14 @@ export default async function ProjectKeywordsPage({
   const project = await findProjectBySlugOrId(slugOrId);
   if (!project) notFound();
 
+  // Auto-sync latest keywords and rankings from Firebase
+  try {
+    const { syncKeywordsAndRankingsFromFirebase } = await import("@/lib/firebase-tracking");
+    await syncKeywordsAndRankingsFromFirebase(project.id);
+  } catch (err) {
+    console.error("⚠️ [ProjectKeywordsPage] Failed to auto-sync from Firebase:", err);
+  }
+
   const domain = hostnameOf(project.domain) || project.domain;
   const slug = toProjectSlug(project.name);
 

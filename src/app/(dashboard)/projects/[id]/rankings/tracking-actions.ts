@@ -81,13 +81,26 @@ export async function syncFirebaseDataAction(projectId: number) {
       "@/lib/firebase-tracking"
     );
     await syncProjectsFromFirebase();
-    await syncKeywordsAndRankingsFromFirebase(projectId);
+    await syncKeywordsAndRankingsFromFirebase(projectId, true);
 
     revalidatePath(`/projects/${projectId}/rankings`);
     revalidatePath(`/projects/${projectId}/keywords`);
     revalidatePath(`/projects/${projectId}`);
     revalidatePath("/position-tracking");
     revalidatePath("/projects");
+
+    const [proj] = await db
+      .select({ name: projects.name })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+
+    if (proj?.name) {
+      const slug = toProjectSlug(proj.name);
+      revalidatePath(`/${slug}/rankings`);
+      revalidatePath(`/${slug}/keywords`);
+      revalidatePath(`/${slug}`);
+    }
 
     return {
       success: true,

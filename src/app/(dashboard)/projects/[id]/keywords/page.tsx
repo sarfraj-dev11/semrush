@@ -47,6 +47,14 @@ export default async function KeywordsPage({
   const record = await getProjectWithClient(projectId);
   if (!record) notFound();
 
+  // Auto-sync latest keywords and rankings from Firebase
+  try {
+    const { syncKeywordsAndRankingsFromFirebase } = await import("@/lib/firebase-tracking");
+    await syncKeywordsAndRankingsFromFirebase(projectId);
+  } catch (err) {
+    console.error("⚠️ [KeywordsPage] Failed to auto-sync from Firebase:", err);
+  }
+
   const query = await searchParams;
   const q = typeof query.q === "string" ? query.q.trim() : "";
   const intent = typeof query.intent === "string" ? query.intent : "";

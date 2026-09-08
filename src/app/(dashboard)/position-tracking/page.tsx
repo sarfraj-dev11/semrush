@@ -78,21 +78,18 @@ export default async function PositionTrackingDirectoryPage({
   const { q = "", device: deviceFilter } = await searchParams;
   const filter = q.trim().toLowerCase();
 
-  let [allProjects, provider] = await Promise.all([
+  // Automatically sync latest projects and keyword rankings from Firebase
+  try {
+    const { syncFromFirebase } = await import("@/lib/firebase-tracking");
+    await syncFromFirebase();
+  } catch (err) {
+    console.error("⚠️ [PositionTracking] Failed to auto-sync from Firebase:", err);
+  }
+
+  const [allProjects, provider] = await Promise.all([
     db.select().from(projects).orderBy(projects.name),
     getSearchProvider(),
   ]);
-
-  // If local DB is empty, sync from Firebase
-  if (allProjects.length === 0) {
-    try {
-      const { syncFromFirebase } = await import("@/lib/firebase-tracking");
-      await syncFromFirebase();
-      allProjects = await db.select().from(projects).orderBy(projects.name);
-    } catch (err) {
-      console.error("⚠️ [PositionTracking] Failed to sync from Firebase:", err);
-    }
-  }
 
   const visible = allProjects.filter((p) => {
     const matchesFilter = filter
