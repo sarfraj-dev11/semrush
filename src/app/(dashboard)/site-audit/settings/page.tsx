@@ -25,8 +25,8 @@ export default async function SiteAuditSettingsPage({
 
   const domain = matchedProject
     ? hostnameOf(matchedProject.domain) || matchedProject.domain
-    : "nexenbloom.com";
-  const slug = matchedProject ? toProjectSlug(matchedProject.name) : "nexen-bloom";
+    : "vazautosolutions.com";
+  const slug = matchedProject ? toProjectSlug(matchedProject.name) : "vazautosolutions";
   const limit = matchedProject?.crawlLimit ?? 500;
 
   return (

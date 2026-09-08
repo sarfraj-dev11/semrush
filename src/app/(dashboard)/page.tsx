@@ -7,7 +7,7 @@ import { toProjectSlug } from "@/lib/slug-utils";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const projectList = await db
+  let projectList = await db
     .select({
       id: projects.id,
       name: projects.name,
@@ -15,6 +15,23 @@ export default async function DashboardPage() {
     .from(projects)
     .orderBy(projects.name)
     .limit(1);
+
+  if (projectList.length === 0) {
+    try {
+      const { syncProjectsFromFirebase } = await import("@/lib/firebase-tracking");
+      await syncProjectsFromFirebase();
+      projectList = await db
+        .select({
+          id: projects.id,
+          name: projects.name,
+        })
+        .from(projects)
+        .orderBy(projects.name)
+        .limit(1);
+    } catch (err) {
+      console.error("❌ [Dashboard] Firebase sync error:", err);
+    }
+  }
 
   // If no project exists yet, render the Semrush SEO Toolkit onboarding landing
   if (projectList.length === 0) {

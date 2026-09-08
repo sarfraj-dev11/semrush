@@ -33,8 +33,8 @@ import { Button } from "@/components/ui/button";
 import { saveSiteAuditSettingsAndRunAction } from "./actions";
 
 export function SiteAuditSettingsForm({
-  initialDomain = "nexenbloom.com",
-  initialSlug = "nexen-bloom",
+  initialDomain = "vazautosolutions.com",
+  initialSlug = "vazautosolutions",
   initialLimit = 500,
 }: {
   initialDomain?: string;
